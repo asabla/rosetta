@@ -1,0 +1,99 @@
+entity User;
+entity Workspace;
+entity HostGroup;
+
+entity Agent {
+  role: String,
+  assigned_repo: String,
+  approved_task: Bool,
+  approved_binaries: Set<String>
+};
+
+entity Repo {
+  name: String,
+  workspace: String
+};
+
+entity Host in [HostGroup] {
+  hostname: String
+};
+
+entity Secret {
+  name: String,
+  production: Bool
+};
+
+entity Binary {
+  path: String
+};
+
+entity Path {
+  path: String,
+  repo: String
+};
+
+entity Model {
+  name: String
+};
+
+action CreateSandbox appliesTo {
+  principal: Agent,
+  resource: Workspace,
+  context: {
+    repo: String
+  }
+};
+
+action ConnectHost appliesTo {
+  principal: Agent,
+  resource: Host,
+  context: {
+    repo: String,
+    approval_status: String,
+    risk: String,
+    human_approval_id: String
+  }
+};
+
+action UseSecret appliesTo {
+  principal: Agent,
+  resource: Secret,
+  context: {
+    repo: String,
+    approval_status: String,
+    risk: String,
+    human_approval_id: String
+  }
+};
+
+action ReadPath appliesTo {
+  principal: Agent,
+  resource: Path,
+  context: {
+    repo: String
+  }
+};
+
+action WritePath appliesTo {
+  principal: Agent,
+  resource: Path,
+  context: {
+    repo: String
+  }
+};
+
+action RunBinary appliesTo {
+  principal: Agent,
+  resource: Binary,
+  context: {
+    repo: String
+  }
+};
+
+action UseModel appliesTo {
+  principal: Agent,
+  resource: Model,
+  context: {
+    repo: String
+  }
+};

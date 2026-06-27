@@ -64,8 +64,8 @@ curl -sS localhost:8080/sandboxes/$SANDBOX_ID/policy
 
 ## Cedar files
 
-* `policies/schema.cedarschema` declares the supported capability actions.
-* `policies/example.cedar` contains example permit policies.
+* `cedar/schema.cedarschema` declares entities, actions, resources, and request context for capability authorization.
+* `cedar/policies/*.cedar` contains the checked-in permit rules used by the service.
 
 ## OpenShell compiler
 
