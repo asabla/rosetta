@@ -69,4 +69,6 @@ curl -sS localhost:8080/sandboxes/$SANDBOX_ID/policy
 
 ## OpenShell compiler
 
-The compiler emits schema version `1`, filesystem policy, hard Landlock requirement, non-root process identity, and deterministic network policy entries. It intentionally contains no tenant/business decisions; only already-authorized typed grants are converted to YAML.
+The compiler emits schema version `1`, filesystem policy, non-root process identity, and deterministic network policy entries. It intentionally contains no tenant/business decisions; only already-authorized typed grants are converted to YAML.
+
+OpenShell metadata note: the documented OpenShell top-level policy fields are `version`, `filesystem_policy`, `landlock`, `process`, and `network_policies`. Rosetta therefore stores `sandbox_id`, `task_id`, `agent_id`, `policy_hash`, and `cedar_decision_ids` in YAML comments instead of inventing unsupported policy fields.

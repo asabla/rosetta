@@ -51,7 +51,7 @@ func respond(w http.ResponseWriter, code int, v any) {
 	_ = json.NewEncoder(w).Encode(v)
 }
 func (s *Server) emit(id string, grants []compiler.Grant) (string, string, []byte, error) {
-	b, h, err := compiler.Compile(grants)
+	b, h, err := compiler.CompileInput(compiler.Input{SandboxID: id, Grants: grants})
 	if err != nil {
 		return "", "", nil, err
 	}
