@@ -1,0 +1,11 @@
+namespace Rosetta {
+  entity Agent;
+  entity Sandbox;
+  action CreateSandbox appliesTo { principal: Agent, resource: Sandbox };
+  action ConnectHost appliesTo { principal: Agent, resource: Sandbox, context: { host: String } };
+  action UseSecret appliesTo { principal: Agent, resource: Sandbox, context: { secret: String, long_lived: Bool } };
+  action ReadPath appliesTo { principal: Agent, resource: Sandbox, context: { path: String } };
+  action WritePath appliesTo { principal: Agent, resource: Sandbox, context: { path: String } };
+  action RunBinary appliesTo { principal: Agent, resource: Sandbox, context: { binary: String } };
+  action UseModel appliesTo { principal: Agent, resource: Sandbox, context: { model: String } };
+}
