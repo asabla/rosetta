@@ -1,6 +1,6 @@
 package api
 
-import "rosetta/internal/rosetta"
+import "github.com/asabla/rosetta"
 
 // CompileRequest is the request body for POST /v1/compile.
 type CompileRequest = rosetta.CompileRequest

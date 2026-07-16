@@ -1,0 +1,6 @@
+.git
+.github
+.agents
+dist
+*.out
+*.test

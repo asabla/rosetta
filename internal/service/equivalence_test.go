@@ -9,11 +9,19 @@ import (
 	"reflect"
 	"testing"
 
-	"rosetta/internal/rosetta"
+	"github.com/asabla/rosetta"
 )
 
 func TestHTTPCompileMatchesSharedCompilerAPI(t *testing.T) {
-	request := rosetta.CompileRequest{Source: "permit();", Target: "openshell"}
+	request := rosetta.CompileRequest{
+		Source: "permit(principal, action, resource);",
+		Target: "openshell",
+		Catalog: rosetta.Catalog{
+			Version:      "rosetta/v0.5",
+			Principal:    rosetta.EntityRef{ID: "agent"},
+			Capabilities: []rosetta.Capability{{ID: "workspace", Kind: "filesystem", Action: "read", Selector: "/workspace"}},
+		},
+	}
 	want, err := rosetta.Compile(context.Background(), request)
 	if err != nil {
 		t.Fatalf("shared compile failed: %v", err)

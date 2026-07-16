@@ -1,0 +1,37 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "permissions": {
+    "allow": [
+      "Bash(go test *)",
+      "Edit(/workspace/src/**)",
+      "Read",
+      "Read(/workspace/src/**)",
+      "WebFetch(domain:api.github.com)"
+    ],
+    "defaultMode": "dontAsk",
+    "disableAutoMode": "disable",
+    "disableBypassPermissionsMode": "disable"
+  },
+  "sandbox": {
+    "allowUnsandboxedCommands": false,
+    "autoAllowBashIfSandboxed": false,
+    "enabled": true,
+    "failIfUnavailable": true,
+    "filesystem": {
+      "allowRead": [
+        "/workspace/src"
+      ],
+      "allowWrite": [
+        "/workspace/src"
+      ],
+      "denyRead": [
+        "~/"
+      ]
+    },
+    "network": {
+      "allowedDomains": [
+        "api.github.com"
+      ]
+    }
+  }
+}
