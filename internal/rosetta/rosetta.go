@@ -1,0 +1,171 @@
+package rosetta
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"strings"
+)
+
+const Version = "0.1.0"
+
+var targets = []string{"openshell"}
+
+// CompileRequest describes policy source translation into a target artifact.
+type CompileRequest struct {
+	Source string `json:"source"`
+	Target string `json:"target"`
+}
+
+// CompileResult contains generated translation output and metadata.
+type CompileResult struct {
+	Output      string       `json:"output"`
+	Target      string       `json:"target"`
+	Artifacts   []Artifact   `json:"artifacts,omitempty"`
+	Diagnostics []Diagnostic `json:"diagnostics,omitempty"`
+}
+
+// CheckRequest describes policy source validation.
+type CheckRequest struct {
+	Source string `json:"source"`
+}
+
+// CheckResult contains validation status and diagnostics.
+type CheckResult struct {
+	Valid       bool         `json:"valid"`
+	Diagnostics []Diagnostic `json:"diagnostics,omitempty"`
+	Errors      []string     `json:"errors,omitempty"`
+}
+
+// ExplainRequest describes a request to explain target translation.
+type ExplainRequest struct {
+	Source string `json:"source"`
+	Target string `json:"target,omitempty"`
+}
+
+// ExplainResult contains a human-readable translation explanation.
+type ExplainResult struct {
+	Explanation string       `json:"explanation"`
+	Diagnostics []Diagnostic `json:"diagnostics,omitempty"`
+}
+
+// CapabilitiesRequest describes a request for Rosetta feature metadata.
+type CapabilitiesRequest struct{}
+
+// CapabilitiesResult contains supported features and targets.
+type CapabilitiesResult struct {
+	Version      string   `json:"version"`
+	Capabilities []string `json:"capabilities"`
+	Targets      []string `json:"targets,omitempty"`
+}
+
+// Diagnostic describes a validation or translation message.
+type Diagnostic struct {
+	Message  string `json:"message"`
+	Severity string `json:"severity"`
+	Code     string `json:"code,omitempty"`
+}
+
+// Artifact describes a generated target artifact.
+type Artifact struct {
+	Name        string `json:"name"`
+	Content     string `json:"content"`
+	ContentType string `json:"contentType"`
+}
+
+// Targets returns the policy rendering targets supported by Rosetta.
+func Targets() []string {
+	return append([]string(nil), targets...)
+}
+
+// Capabilities returns compiler capabilities shared by the CLI and service.
+func Capabilities(ctx context.Context, _ CapabilitiesRequest) (*CapabilitiesResult, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	return &CapabilitiesResult{
+		Version:      Version,
+		Capabilities: []string{"compile", "check", "explain", "capabilities", "targets", "openapi"},
+		Targets:      Targets(),
+	}, nil
+}
+
+// Compile validates source policy text and renders it for the requested target.
+func Compile(ctx context.Context, req CompileRequest) (*CompileResult, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	if diagnostic, ok := validateSource(req.Source); !ok {
+		return nil, diagnosticError(diagnostic)
+	}
+	target := targetOrDefault(req.Target)
+	if !supportedTarget(target) {
+		return nil, fmt.Errorf("unsupported target %q", target)
+	}
+	output := fmt.Sprintf("# target: %s\n%s", target, strings.TrimSpace(req.Source))
+	return &CompileResult{
+		Output: output,
+		Target: target,
+		Artifacts: []Artifact{{
+			Name:        target + ".policy",
+			Content:     output,
+			ContentType: "text/plain; charset=utf-8",
+		}},
+	}, nil
+}
+
+// Check validates source policy text.
+func Check(ctx context.Context, req CheckRequest) (*CheckResult, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	if diagnostic, ok := validateSource(req.Source); !ok {
+		return &CheckResult{Valid: false, Diagnostics: []Diagnostic{diagnostic}, Errors: []string{diagnostic.Message}}, nil
+	}
+	return &CheckResult{Valid: true}, nil
+}
+
+// Explain describes how Rosetta would process the source policy text.
+func Explain(ctx context.Context, req ExplainRequest) (*ExplainResult, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	if diagnostic, ok := validateSource(req.Source); !ok {
+		return nil, diagnosticError(diagnostic)
+	}
+	target := targetOrDefault(req.Target)
+	if !supportedTarget(target) {
+		return nil, fmt.Errorf("unsupported target %q", target)
+	}
+	return &ExplainResult{Explanation: fmt.Sprintf("Rosetta validates Cedar policy input and renders it for the %s target.", target)}, nil
+}
+
+func validateSource(source string) (Diagnostic, bool) {
+	if strings.TrimSpace(source) == "" {
+		return Diagnostic{Message: "source is required", Severity: "error", Code: "source_required"}, false
+	}
+	return Diagnostic{}, true
+}
+
+func diagnosticError(d Diagnostic) error {
+	if d.Message == "" {
+		return errors.New("unknown diagnostic")
+	}
+	return errors.New(d.Message)
+}
+
+func targetOrDefault(target string) string {
+	if target != "" {
+		return target
+	}
+	return targets[0]
+}
+
+func supportedTarget(target string) bool {
+	for _, candidate := range targets {
+		if candidate == target {
+			return true
+		}
+	}
+	return false
+}
