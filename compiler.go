@@ -25,9 +25,10 @@ import (
 const CatalogVersion = "rosetta/v0.5"
 
 const (
-	MaxSourceBytes   = 2 << 20
-	MaxCapabilities  = 10_000
-	MaxSelectorBytes = 4096
+	MaxSourceBytes         = 2 << 20
+	MaxCapabilities        = 10_000
+	MaxSelectorBytes       = 4096
+	MaxDecisionOverlapWork = 250_000
 )
 
 var targets = []string{TargetOpenShell, TargetOpenCode, TargetCodex, TargetClaude}
@@ -93,7 +94,7 @@ func Compile(ctx context.Context, req CompileRequest) (*CompileResult, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err := validateDecisionIsolation(selected, decisions); err != nil {
+	if err := validateDecisionIsolation(ctx, selected, decisions); err != nil {
 		return nil, err
 	}
 
@@ -112,46 +113,82 @@ func Compile(ctx context.Context, req CompileRequest) (*CompileResult, error) {
 	}, nil
 }
 
-func validateDecisionIsolation(capabilities []Capability, decisions []Decision) error {
+func validateDecisionIsolation(ctx context.Context, capabilities []Capability, decisions []Decision) error {
 	allowed := make(map[string]bool, len(decisions))
 	for _, decision := range decisions {
 		allowed[decision.CapabilityID] = decision.Allowed
 	}
-	for i, left := range capabilities {
-		for _, right := range capabilities[i+1:] {
-			if allowed[left.ID] == allowed[right.ID] || !capabilitiesOverlap(left, right) {
+	permitted := make([]Capability, 0, len(capabilities))
+	denied := make([]Capability, 0, len(capabilities))
+	for _, capability := range capabilities {
+		if allowed[capability.ID] {
+			permitted = append(permitted, capability)
+		} else {
+			denied = append(denied, capability)
+		}
+	}
+
+	budget := overlapBudget{remaining: MaxDecisionOverlapWork}
+	for _, left := range permitted {
+		for _, right := range denied {
+			if left.Kind != right.Kind || left.Kind == KindNetwork && left.Port != right.Port {
 				continue
 			}
-			permitted, denied := left, right
-			if !allowed[left.ID] {
-				permitted, denied = right, left
+			if err := ctx.Err(); err != nil {
+				return err
 			}
-			return fmt.Errorf("allowed capability %q overlaps denied capability %q; target output cannot preserve the deny", permitted.ID, denied.ID)
+			if err := budget.spend(); err != nil {
+				return err
+			}
+			overlaps, err := capabilitiesOverlap(ctx, left, right, &budget)
+			if err != nil {
+				return err
+			}
+			if overlaps {
+				return fmt.Errorf("allowed capability %q overlaps denied capability %q; target output cannot preserve the deny", left.ID, right.ID)
+			}
 		}
 	}
 	return nil
 }
 
-func capabilitiesOverlap(left, right Capability) bool {
+type overlapBudget struct {
+	remaining int
+}
+
+func (budget *overlapBudget) spend() error {
+	if budget.remaining == 0 {
+		return fmt.Errorf("decision overlap validation exceeds the work limit of %d", MaxDecisionOverlapWork)
+	}
+	budget.remaining--
+	return nil
+}
+
+func capabilitiesOverlap(ctx context.Context, left, right Capability, budget *overlapBudget) (bool, error) {
 	if left.Kind != right.Kind {
-		return false
+		return false, nil
 	}
 	switch left.Kind {
 	case KindFilesystem:
-		return pathContains(left.Selector, right.Selector) || pathContains(right.Selector, left.Selector)
+		return pathContains(left.Selector, right.Selector) || pathContains(right.Selector, left.Selector), nil
 	case KindTool:
-		return left.Selector == right.Selector
+		return left.Selector == right.Selector, nil
 	case KindCommand:
-		return wildcardMatch(left.Selector, right.Selector) || wildcardMatch(right.Selector, left.Selector)
+		return globPatternsOverlap(ctx, left.Selector, right.Selector, budget)
 	case KindNetwork:
 		if left.Port != right.Port {
-			return false
+			return false, nil
 		}
-		hostsOverlap := wildcardMatch(left.Selector, right.Selector) || wildcardMatch(right.Selector, left.Selector)
-		pathsOverlap := left.Path == "" || right.Path == "" || wildcardMatch(left.Path, right.Path) || wildcardMatch(right.Path, left.Path)
-		return hostsOverlap && pathsOverlap
+		hostsOverlap, err := globPatternsOverlap(ctx, left.Selector, right.Selector, budget)
+		if err != nil || !hostsOverlap {
+			return false, err
+		}
+		if left.Path == "" || right.Path == "" {
+			return true, nil
+		}
+		return globPatternsOverlap(ctx, left.Path, right.Path, budget)
 	default:
-		return false
+		return false, nil
 	}
 }
 
@@ -161,32 +198,71 @@ func pathContains(parent, child string) bool {
 	return parent == child || parent == "" || parent == "/" || strings.HasPrefix(child, parent+"/")
 }
 
-func wildcardMatch(pattern, value string) bool {
-	rows := len(pattern) + 1
-	cols := len(value) + 1
-	dp := make([][]bool, rows)
-	for i := range dp {
-		dp[i] = make([]bool, cols)
-	}
-	dp[0][0] = true
-	for i := 1; i < rows; i++ {
-		if pattern[i-1] == '*' {
-			dp[i][0] = dp[i-1][0]
+type globState struct {
+	left  int
+	right int
+}
+
+// globPatternsOverlap decides whether two patterns share at least one string.
+// Rosetta's target-neutral glob grammar gives '*' zero-or-more and '?' exactly
+// one Unicode code point. The product search follows epsilon transitions for
+// empty '*' matches and consuming transitions for compatible pattern tokens.
+func globPatternsOverlap(ctx context.Context, leftPattern, rightPattern string, budget *overlapBudget) (bool, error) {
+	left := []rune(leftPattern)
+	right := []rune(rightPattern)
+	queue := []globState{{}}
+	visited := map[globState]struct{}{{}: {}}
+
+	add := func(state globState) error {
+		if _, found := visited[state]; found {
+			return nil
 		}
+		if err := budget.spend(); err != nil {
+			return err
+		}
+		visited[state] = struct{}{}
+		queue = append(queue, state)
+		return nil
 	}
-	for i := 1; i < rows; i++ {
-		for j := 1; j < cols; j++ {
-			switch pattern[i-1] {
-			case '*':
-				dp[i][j] = dp[i-1][j] || dp[i][j-1]
-			case '?':
-				dp[i][j] = dp[i-1][j-1]
-			default:
-				dp[i][j] = dp[i-1][j-1] && pattern[i-1] == value[j-1]
+
+	for len(queue) > 0 {
+		if err := ctx.Err(); err != nil {
+			return false, err
+		}
+		state := queue[0]
+		queue = queue[1:]
+		if state.left == len(left) && state.right == len(right) {
+			return true, nil
+		}
+		if state.left < len(left) && left[state.left] == '*' {
+			if err := add(globState{left: state.left + 1, right: state.right}); err != nil {
+				return false, err
 			}
 		}
+		if state.right < len(right) && right[state.right] == '*' {
+			if err := add(globState{left: state.left, right: state.right + 1}); err != nil {
+				return false, err
+			}
+		}
+		if state.left == len(left) || state.right == len(right) || !globTokensOverlap(left[state.left], right[state.right]) {
+			continue
+		}
+		next := globState{left: state.left + 1, right: state.right + 1}
+		if left[state.left] == '*' {
+			next.left = state.left
+		}
+		if right[state.right] == '*' {
+			next.right = state.right
+		}
+		if err := add(next); err != nil {
+			return false, err
+		}
 	}
-	return dp[len(pattern)][len(value)]
+	return false, nil
+}
+
+func globTokensOverlap(left, right rune) bool {
+	return left == '*' || left == '?' || right == '*' || right == '?' || left == right
 }
 
 func Explain(ctx context.Context, req ExplainRequest) (*ExplainResult, error) {
