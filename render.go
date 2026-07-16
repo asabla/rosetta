@@ -72,19 +72,6 @@ func render(target, mode string, capabilities []Capability, decisions []Decision
 }
 
 func renderOpenShell(capabilities []Capability, options OpenShellOptions) (Artifact, error) {
-	compatibility := options.LandlockCompatibility
-	if compatibility == "" {
-		compatibility = "hard_requirement"
-	}
-	if compatibility != "hard_requirement" && compatibility != "best_effort" {
-		return Artifact{}, fmt.Errorf("invalid OpenShell Landlock compatibility %q", compatibility)
-	}
-	if compatibility != "hard_requirement" {
-		return Artifact{}, errors.New("OpenShell Landlock compatibility must be hard_requirement to preserve fail-closed compilation")
-	}
-	if options.IncludeWorkdir {
-		return Artifact{}, errors.New("OpenShell includeWorkdir grants uncatalogued write access and is not supported")
-	}
 	user := options.RunAsUser
 	if user == "" {
 		user = "sandbox"
@@ -153,14 +140,13 @@ func renderOpenShell(capabilities []Capability, options OpenShellOptions) (Artif
 	}
 
 	var out strings.Builder
-	out.WriteString("version: 1\nfilesystem_policy:\n  include_workdir: ")
-	out.WriteString(strconv.FormatBool(options.IncludeWorkdir))
+	out.WriteString("version: 1\nfilesystem_policy:\n  include_workdir: false")
 	out.WriteString("\n  read_only:")
 	writeYAMLList(&out, readOnly, 4)
 	out.WriteString("\n  read_write:")
 	writeYAMLList(&out, readWrite, 4)
 	out.WriteString("\nlandlock:\n  compatibility: ")
-	out.WriteString(yamlString(compatibility))
+	out.WriteString(yamlString("hard_requirement"))
 	out.WriteString("\nprocess:\n  run_as_user: ")
 	out.WriteString(yamlString(user))
 	out.WriteString("\n  run_as_group: ")
@@ -309,13 +295,6 @@ func renderCodex(capabilities []Capability, options CodexOptions) (Artifact, err
 		out.WriteString(" = ")
 		out.WriteString(strconv.Quote(absoluteFilesystem[path]))
 		out.WriteByte('\n')
-	}
-	if options.WorkspaceRoot != "" && options.WorkspaceRoot != "." {
-		out.WriteString("\n[permissions.")
-		out.WriteString(profile)
-		out.WriteString(".workspace_roots]\n")
-		out.WriteString(strconv.Quote(options.WorkspaceRoot))
-		out.WriteString(" = true\n")
 	}
 	for _, server := range sortedKeys(mcp) {
 		tools := uniqueSorted(mcp[server])
@@ -522,8 +501,8 @@ func representabilityError(target string, capability Capability, options TargetO
 }
 
 func validateTargetOptions(target string, options TargetOptions) error {
-	hasOpenShell := options.OpenShell.IncludeWorkdir || options.OpenShell.LandlockCompatibility != "" || options.OpenShell.RunAsUser != "" || options.OpenShell.RunAsGroup != ""
-	hasCodex := options.Codex.ProfileName != "" || options.Codex.WorkspaceRoot != "" || len(options.Codex.MCPServers) > 0
+	hasOpenShell := options.OpenShell.RunAsUser != "" || options.OpenShell.RunAsGroup != ""
+	hasCodex := options.Codex.ProfileName != "" || len(options.Codex.MCPServers) > 0
 	if hasOpenShell && target != TargetOpenShell {
 		return errors.New("OpenShell options are only valid for the openshell target")
 	}

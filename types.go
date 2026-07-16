@@ -79,16 +79,13 @@ type TargetOptions struct {
 }
 
 type OpenShellOptions struct {
-	IncludeWorkdir        bool   `json:"includeWorkdir,omitempty"`
-	LandlockCompatibility string `json:"landlockCompatibility,omitempty"`
-	RunAsUser             string `json:"runAsUser,omitempty"`
-	RunAsGroup            string `json:"runAsGroup,omitempty"`
+	RunAsUser  string `json:"runAsUser,omitempty"`
+	RunAsGroup string `json:"runAsGroup,omitempty"`
 }
 
 type CodexOptions struct {
-	ProfileName   string                    `json:"profileName,omitempty"`
-	WorkspaceRoot string                    `json:"workspaceRoot,omitempty"`
-	MCPServers    map[string]CodexMCPServer `json:"mcpServers,omitempty"`
+	ProfileName string                    `json:"profileName,omitempty"`
+	MCPServers  map[string]CodexMCPServer `json:"mcpServers,omitempty"`
 }
 
 // CodexMCPServer defines the transport for an MCP server whose enabled tools

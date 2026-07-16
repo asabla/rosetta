@@ -13,7 +13,7 @@ import (
 var targetContracts = []TargetContractInfo{
 	{Target: TargetOpenShell, Version: "rosetta/openshell-policy-v1", Maturity: "supported"},
 	{Target: TargetOpenCode, Version: "rosetta/opencode-permissions-v1", Maturity: "supported"},
-	{Target: TargetCodex, Version: "rosetta/codex-permissions-v1beta", Maturity: "preview"},
+	{Target: TargetCodex, Version: "rosetta/codex-permissions-v1beta2", Maturity: "preview"},
 	{Target: TargetClaude, Version: "rosetta/claude-code-settings-v1beta", Maturity: "preview"},
 }
 
@@ -164,6 +164,9 @@ func validateCodexArtifact(content string) error {
 	}
 	if _, inherited := entry["extends"]; inherited {
 		return errors.New("Codex generated profile must not inherit broader filesystem access")
+	}
+	if _, addsRoot := entry["workspace_roots"]; addsRoot {
+		return errors.New("Codex generated profile must not activate workspace roots")
 	}
 	filesystem, ok := entry["filesystem"].(map[string]any)
 	if !ok || filesystem[":minimal"] != "read" {
