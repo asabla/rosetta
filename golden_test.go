@@ -45,7 +45,15 @@ func TestExampleArtifactsMatchGoldenFilesAndParse(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.target, func(t *testing.T) {
-			result, err := Compile(context.Background(), CompileRequest{Source: string(policy), Target: tt.target, Catalog: catalog, Options: options})
+			mode := ModeStrict
+			targetOptions := TargetOptions{}
+			if tt.target == TargetClaude {
+				mode = ModePermissive
+			}
+			if tt.target == TargetCodex {
+				targetOptions = options
+			}
+			result, err := Compile(context.Background(), CompileRequest{Source: string(policy), Target: tt.target, Mode: mode, Catalog: catalog, Options: targetOptions})
 			if err != nil {
 				t.Fatal(err)
 			}
