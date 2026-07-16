@@ -10,6 +10,28 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+var targetContracts = []TargetContractInfo{
+	{Target: TargetOpenShell, Version: "rosetta/openshell-policy-v1", Maturity: "supported"},
+	{Target: TargetOpenCode, Version: "rosetta/opencode-permissions-v1", Maturity: "supported"},
+	{Target: TargetCodex, Version: "rosetta/codex-permissions-v1beta", Maturity: "preview"},
+	{Target: TargetClaude, Version: "rosetta/claude-code-settings-v1beta", Maturity: "preview"},
+}
+
+// TargetContracts returns a copy of the target output contracts implemented by
+// this compiler version.
+func TargetContracts() []TargetContractInfo {
+	return append([]TargetContractInfo(nil), targetContracts...)
+}
+
+func targetContractVersion(target string) string {
+	for _, contract := range targetContracts {
+		if contract.Target == target {
+			return contract.Version
+		}
+	}
+	return ""
+}
+
 // validateArtifactContract is a defense-in-depth check over Rosetta's emitted
 // target subset. It is intentionally narrower than each upstream schema.
 func validateArtifactContract(artifact Artifact) error {
