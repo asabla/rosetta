@@ -26,6 +26,7 @@ func run(args []string, stdin io.Reader, stdout io.Writer) error {
 	case "compile":
 		fs := flag.NewFlagSet("compile", flag.ContinueOnError)
 		target := fs.String("target", "", "rendering target")
+		mode := fs.String("mode", rosetta.ModeStrict, "compilation mode (strict|permissive)")
 		if err := fs.Parse(args[1:]); err != nil {
 			return err
 		}
@@ -33,18 +34,23 @@ func run(args []string, stdin io.Reader, stdout io.Writer) error {
 		if err != nil {
 			return err
 		}
-		output, err := rosetta.Compile(context.Background(), rosetta.CompileRequest{Source: string(source), Target: *target})
+		output, err := rosetta.Compile(context.Background(), rosetta.CompileRequest{Source: string(source), Target: *target, Mode: *mode})
 		if err != nil {
 			return err
 		}
 		_, err = fmt.Fprintln(stdout, output.Output)
 		return err
 	case "check":
+		fs := flag.NewFlagSet("check", flag.ContinueOnError)
+		mode := fs.String("mode", rosetta.ModeStrict, "compilation mode (strict|permissive)")
+		if err := fs.Parse(args[1:]); err != nil {
+			return err
+		}
 		source, err := io.ReadAll(stdin)
 		if err != nil {
 			return err
 		}
-		result, err := rosetta.Check(context.Background(), rosetta.CheckRequest{Source: string(source)})
+		result, err := rosetta.Check(context.Background(), rosetta.CheckRequest{Source: string(source), Mode: *mode})
 		if err != nil {
 			return err
 		}
@@ -54,11 +60,17 @@ func run(args []string, stdin io.Reader, stdout io.Writer) error {
 		_, err = fmt.Fprintln(stdout, "ok")
 		return err
 	case "explain":
+		fs := flag.NewFlagSet("explain", flag.ContinueOnError)
+		target := fs.String("target", "", "rendering target")
+		mode := fs.String("mode", rosetta.ModeStrict, "compilation mode (strict|permissive)")
+		if err := fs.Parse(args[1:]); err != nil {
+			return err
+		}
 		source, err := io.ReadAll(stdin)
 		if err != nil {
 			return err
 		}
-		explanation, err := rosetta.Explain(context.Background(), rosetta.ExplainRequest{Source: string(source)})
+		explanation, err := rosetta.Explain(context.Background(), rosetta.ExplainRequest{Source: string(source), Target: *target, Mode: *mode})
 		if err != nil {
 			return err
 		}
