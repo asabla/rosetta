@@ -9,6 +9,7 @@ test:
 fuzz:
 	go test . -run='^$$' -fuzz=FuzzCheckNeverPanics -fuzztime=30s
 	go test . -run='^$$' -fuzz=FuzzCompileNeverBroadensDeniedInput -fuzztime=30s
+	go test . -run='^$$' -fuzz=FuzzGlobIntersectionNeverMissesWitness -fuzztime=30s
 
 check:
 	test -z "$$(gofmt -l .)"
