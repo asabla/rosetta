@@ -22,7 +22,7 @@ jobs:
           go-version: '1.25.12'
           cache: true
       - name: Test release source
-        run: go test ./...
+        run: make check
       - name: Check tag matches SDK version
         run: test "$(go run ./cmd/rosetta version)" = "rosetta ${GITHUB_REF_NAME#v}"
       - name: Release binaries
@@ -35,6 +35,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   container:
+    needs: release
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
