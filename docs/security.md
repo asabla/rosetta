@@ -6,7 +6,7 @@ Compilation fails closed. Cedar parse, schema, entity, request, and evaluation e
 
 Allowed and denied wildcard capabilities are checked for language intersection before rendering. The check has a deterministic work limit and honors request cancellation; compilation fails without an artifact when Rosetta cannot prove decision isolation within that limit.
 
-Target options cannot add authorization. OpenShell `includeWorkdir` and `best_effort` Landlock operation are rejected because they can introduce access or continued execution that is absent from the Cedar decisions.
+Target options cannot add authorization. OpenShell workdir inclusion is always disabled and Landlock compatibility is always `hard_requirement`; neither setting is exposed as an option. Codex options can name a profile and define transports for already-authorized MCP tools, but cannot activate workspace roots.
 
 The catalog is trusted input and the completeness boundary. Rosetta cannot infer all possible paths or tools from arbitrary Cedar. Review catalog changes with the same care as policy changes, pin the catalog version, and keep target-specific entries scoped with `targets` when one selector cannot be shared safely.
 
