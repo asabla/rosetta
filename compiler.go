@@ -2,6 +2,10 @@ package rosetta
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/binary"
+	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net"
@@ -42,9 +46,10 @@ func Capabilities(ctx context.Context, _ CapabilitiesRequest) (*CapabilitiesResu
 		return nil, err
 	}
 	return &CapabilitiesResult{
-		Version:      Version,
-		Capabilities: []string{"cedar-parse", "schema-validation", "authorize", "compile", "check", "explain", "deterministic-artifacts"},
-		Targets:      Targets(),
+		Version:         Version,
+		Capabilities:    []string{"cedar-parse", "schema-validation", "authorize", "compile", "check", "explain", "deterministic-artifacts"},
+		Targets:         Targets(),
+		TargetContracts: TargetContracts(),
 	}, nil
 }
 
@@ -103,6 +108,7 @@ func Compile(ctx context.Context, req CompileRequest) (*CompileResult, error) {
 		Artifacts:   []Artifact{artifact},
 		Decisions:   decisions,
 		Diagnostics: diagnostics,
+		Metadata:    compileMetadata(req, mode, artifact),
 	}, nil
 }
 
@@ -198,7 +204,29 @@ func Explain(ctx context.Context, req ExplainRequest) (*ExplainResult, error) {
 		Explanation: fmt.Sprintf("Cedar allowed %d of %d catalogued capabilities for %s; Rosetta rendered one fail-closed %s artifact.", allowed, len(result.Decisions), req.Catalog.Principal.ID, req.Target),
 		Decisions:   result.Decisions,
 		Diagnostics: result.Diagnostics,
+		Metadata:    result.Metadata,
 	}, nil
+}
+
+func compileMetadata(req CompileRequest, mode string, artifact Artifact) CompileMetadata {
+	catalog, _ := json.Marshal(req.Catalog)
+	options, _ := json.Marshal(req.Options)
+	hash := sha256.New()
+	for _, value := range [][]byte{[]byte(req.Source), []byte(req.Target), []byte(mode), catalog, options} {
+		var length [8]byte
+		binary.BigEndian.PutUint64(length[:], uint64(len(value)))
+		_, _ = hash.Write(length[:])
+		_, _ = hash.Write(value)
+	}
+	artifactHash := sha256.Sum256([]byte(artifact.Content))
+	return CompileMetadata{
+		CompilerVersion:       Version,
+		CatalogVersion:        req.Catalog.Version,
+		TargetContractVersion: targetContractVersion(req.Target),
+		Mode:                  mode,
+		InputSHA256:           hex.EncodeToString(hash.Sum(nil)),
+		ArtifactSHA256:        hex.EncodeToString(artifactHash[:]),
+	}
 }
 
 func parseAndValidate(source, mode string) (*cedar.PolicySet, []Diagnostic, error) {
