@@ -63,6 +63,11 @@ func render(target, mode string, capabilities []Capability, decisions []Decision
 	default:
 		err = fmt.Errorf("unsupported target %q", target)
 	}
+	if err == nil {
+		if validationErr := validateArtifactContract(artifact); validationErr != nil {
+			err = fmt.Errorf("generated %s artifact violates Rosetta target contract: %w", target, validationErr)
+		}
+	}
 	return artifact, diagnostics, err
 }
 
