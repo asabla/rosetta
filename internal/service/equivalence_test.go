@@ -47,6 +47,9 @@ func TestHTTPCompileMatchesSharedCompilerAPI(t *testing.T) {
 	if !reflect.DeepEqual(got.Artifacts, want.Artifacts) {
 		t.Fatalf("artifacts mismatch: got %#v want %#v", got.Artifacts, want.Artifacts)
 	}
+	if got.Metadata != want.Metadata {
+		t.Fatalf("metadata mismatch: got %#v want %#v", got.Metadata, want.Metadata)
+	}
 }
 
 func TestHTTPCheckMatchesSharedCompilerDiagnostics(t *testing.T) {
