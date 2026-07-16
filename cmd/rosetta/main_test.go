@@ -100,3 +100,49 @@ func TestCLIPermissiveCompileReportsDiagnostics(t *testing.T) {
 		t.Fatalf("expected omission diagnostic on stderr, got %q", stderr.String())
 	}
 }
+
+func TestCLICompileJSONIncludesMetadataAndDiagnostics(t *testing.T) {
+	request := rosetta.CompileRequest{
+		Source: "permit(principal, action, resource);",
+		Target: rosetta.TargetClaude,
+		Mode:   rosetta.ModePermissive,
+		Catalog: rosetta.Catalog{
+			Version:      rosetta.CatalogVersion,
+			Principal:    rosetta.EntityRef{ID: "agent"},
+			Capabilities: []rosetta.Capability{{ID: "command", Kind: rosetta.KindCommand, Action: "execute", Selector: "go test"}},
+		},
+	}
+	catalog, err := json.Marshal(request.Catalog)
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := t.TempDir() + "/catalog.json"
+	if err := os.WriteFile(path, catalog, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var stdout, stderr bytes.Buffer
+	if err := run([]string{"compile", "-format", "json", "-target", request.Target, "-mode", request.Mode, "-catalog", path}, strings.NewReader(request.Source), &stdout, &stderr); err != nil {
+		t.Fatal(err)
+	}
+	var result rosetta.CompileResult
+	if err := json.Unmarshal(stdout.Bytes(), &result); err != nil {
+		t.Fatalf("decode JSON output: %v", err)
+	}
+	if result.Metadata.InputSHA256 == "" || result.Metadata.TargetContractVersion == "" {
+		t.Fatalf("missing compile metadata: %#v", result.Metadata)
+	}
+	if len(result.Diagnostics) == 0 {
+		t.Fatal("JSON result omitted diagnostics")
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("JSON diagnostics were duplicated on stderr: %q", stderr.String())
+	}
+}
+
+func TestCLISourceReadIsBounded(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	err := run([]string{"check"}, strings.NewReader(strings.Repeat("x", rosetta.MaxSourceBytes+1)), &stdout, &stderr)
+	if err == nil || !strings.Contains(err.Error(), "source exceeds") {
+		t.Fatalf("expected bounded source error, got %v", err)
+	}
+}
