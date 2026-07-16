@@ -140,22 +140,22 @@ func TestCapabilitiesDiscoverVersionedTargetContracts(t *testing.T) {
 	}
 }
 
-func TestOpenShellRejectsUncataloguedAndFailOpenOptions(t *testing.T) {
+func TestOpenShellHardeningIsFixedByRenderer(t *testing.T) {
 	catalog := Catalog{
 		Version:      CatalogVersion,
 		Principal:    EntityRef{ID: "agent"},
 		Capabilities: []Capability{{ID: "workspace", Kind: KindFilesystem, Action: "write", Selector: "/workspace"}},
 	}
-	for _, options := range []OpenShellOptions{
-		{IncludeWorkdir: true},
-		{LandlockCompatibility: "best_effort"},
-	} {
-		_, err := Compile(context.Background(), CompileRequest{
-			Source: "permit(principal, action, resource);", Target: TargetOpenShell, Catalog: catalog,
-			Options: TargetOptions{OpenShell: options},
-		})
-		if err == nil {
-			t.Fatalf("expected unsafe OpenShell options %#v to be rejected", options)
+	result, err := Compile(context.Background(), CompileRequest{
+		Source: "permit(principal, action, resource);", Target: TargetOpenShell, Catalog: catalog,
+		Options: TargetOptions{OpenShell: OpenShellOptions{RunAsUser: "agent", RunAsGroup: "agent"}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"include_workdir: false", `compatibility: "hard_requirement"`} {
+		if !strings.Contains(result.Output, want) {
+			t.Fatalf("OpenShell artifact missing fixed hardening %q:\n%s", want, result.Output)
 		}
 	}
 }
