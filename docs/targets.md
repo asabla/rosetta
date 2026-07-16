@@ -1,5 +1,7 @@
 # Target support
 
+Rosetta's executable output invariants are documented in [target contracts](target-contracts.md). Every artifact is checked against the corresponding narrow contract before it is returned.
+
 Rosetta emits configuration that targets the current documented formats. Target configuration can merge with settings from other scopes, so deployment must account for the target's precedence rules. Repository-level files are not a substitute for centrally managed policy when users can override them.
 
 | Capability | OpenShell | OpenCode | Codex | Claude Code |
