@@ -1,6 +1,6 @@
 # Architecture
 
-Rosetta v0.5 compiles Cedar authorization decisions into restrictive configuration for agent runtimes. It does not rewrite Cedar syntax into target syntax. Such a rewrite would be misleading because Cedar is an authorization language while the targets expose different combinations of filesystem sandboxes, tool gates, command approval rules, and network policy.
+Rosetta v1 compiles Cedar authorization decisions into restrictive configuration for agent runtimes. It does not rewrite Cedar syntax into target syntax. Such a rewrite would be misleading because Cedar is an authorization language while the targets expose different combinations of filesystem sandboxes, tool gates, command approval rules, and network policy.
 
 Each compilation combines Cedar policy source with a finite capability catalog. Rosetta validates both against its versioned Cedar schema, authorizes every capability for one principal, normalizes the decisions, and passes only those decisions to a target renderer. Cedar forbids override permits. A missing permit is a deny. Evaluation errors stop compilation.
 

@@ -1,6 +1,6 @@
 # Rosetta
 
-Rosetta compiles Cedar authorization policy into restrictive configuration for OpenShell, OpenCode, Codex, and Claude Code. Version 0.5 provides a Go SDK, a standalone CLI, and a stateless HTTP API. The CLI links the SDK directly; it never needs the service to validate or generate policy files.
+Rosetta compiles Cedar authorization policy into restrictive configuration for OpenShell, OpenCode, Codex, and Claude Code. Version 1 provides a Go SDK, a standalone CLI, and a stateless HTTP API. The CLI links the SDK directly; it never needs the service to validate or generate policy files.
 
 Rosetta evaluates Cedar against a finite capability catalog. This makes the compilation boundary explicit and reviewable: Cedar decides whether a principal may read a path, use a tool, execute a command, or connect to an endpoint, while each renderer maps only representable decisions into its target format. Missing permits and Cedar forbids are denied. Evaluation errors fail compilation.
 
@@ -9,11 +9,11 @@ Rosetta evaluates Cedar against a finite capability catalog. This makes the comp
 Build the CLI or service with Go 1.25.12 or a newer supported release:
 
 ```sh
-go install github.com/asabla/rosetta/cmd/rosetta@v0.5.0
-go install github.com/asabla/rosetta/cmd/rosetta-server@v0.5.0
+go install github.com/asabla/rosetta/cmd/rosetta@v1.0.0
+go install github.com/asabla/rosetta/cmd/rosetta-server@v1.0.0
 ```
 
-Release pages provide platform archives and checksums. The service container is published as `ghcr.io/asabla/rosetta:v0.5.0` after a version tag is released.
+Release pages provide platform archives, checksums, SBOMs, and build-provenance attestations. The service container is published as `ghcr.io/asabla/rosetta:v1.0.0` after a version tag is released.
 
 ## Compile a policy
 
@@ -57,4 +57,4 @@ fmt.Print(result.Artifacts[0].Content)
 
 Run `rosetta-server` or the container and send the same SDK request model to `POST /v1/compile`. The service also exposes `POST /v1/check`, `POST /v1/explain`, discovery endpoints, a health endpoint, and `/v1/openapi.json`. Request bodies are limited to 2 MiB and unknown JSON fields are rejected.
 
-The [architecture](docs/architecture.md), [Cedar profile](docs/cedar-profile.md), [target support](docs/targets.md), executable [target contracts](docs/target-contracts.md), and [security model](docs/security.md) document the compatibility and trust boundaries.
+The [architecture](docs/architecture.md), [Cedar profile](docs/cedar-profile.md), [target support](docs/targets.md), executable [target contracts](docs/target-contracts.md), [security model](docs/security.md), and [v1 migration guide](docs/migrating-to-v1.md) document the compatibility and trust boundaries.
