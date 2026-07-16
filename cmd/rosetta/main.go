@@ -1,12 +1,14 @@
 package main
 
 import (
+	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
 	"os"
 
-	"rosetta/internal/compiler"
+	"rosetta/internal/rosetta"
 )
 
 func main() {
@@ -31,19 +33,23 @@ func run(args []string, stdin io.Reader, stdout io.Writer) error {
 		if err != nil {
 			return err
 		}
-		output, err := compiler.Compile(string(source), *target)
+		output, err := rosetta.Compile(context.Background(), rosetta.CompileRequest{Source: string(source), Target: *target})
 		if err != nil {
 			return err
 		}
-		_, err = fmt.Fprintln(stdout, output)
+		_, err = fmt.Fprintln(stdout, output.Output)
 		return err
 	case "check":
 		source, err := io.ReadAll(stdin)
 		if err != nil {
 			return err
 		}
-		if errs := compiler.Check(string(source)); len(errs) > 0 {
-			return errs[0]
+		result, err := rosetta.Check(context.Background(), rosetta.CheckRequest{Source: string(source)})
+		if err != nil {
+			return err
+		}
+		if !result.Valid {
+			return errors.New(result.Errors[0])
 		}
 		_, err = fmt.Fprintln(stdout, "ok")
 		return err
@@ -52,21 +58,25 @@ func run(args []string, stdin io.Reader, stdout io.Writer) error {
 		if err != nil {
 			return err
 		}
-		explanation, err := compiler.Explain(string(source), "")
+		explanation, err := rosetta.Explain(context.Background(), rosetta.ExplainRequest{Source: string(source)})
 		if err != nil {
 			return err
 		}
-		_, err = fmt.Fprintln(stdout, explanation)
+		_, err = fmt.Fprintln(stdout, explanation.Explanation)
 		return err
 	case "targets":
-		for _, target := range compiler.Targets() {
+		for _, target := range rosetta.Targets() {
 			if _, err := fmt.Fprintln(stdout, target); err != nil {
 				return err
 			}
 		}
 		return nil
 	case "capabilities":
-		for _, capability := range compiler.Capabilities() {
+		capabilities, err := rosetta.Capabilities(context.Background(), rosetta.CapabilitiesRequest{})
+		if err != nil {
+			return err
+		}
+		for _, capability := range capabilities.Capabilities {
 			if _, err := fmt.Fprintln(stdout, capability); err != nil {
 				return err
 			}

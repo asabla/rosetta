@@ -1,73 +1,61 @@
 package compiler
 
 import (
-	"errors"
-	"fmt"
-	"strings"
+	"context"
+
+	"rosetta/internal/rosetta"
 )
 
-const Version = "0.1.0"
-
-var targets = []string{"openshell"}
+const Version = rosetta.Version
 
 // Targets returns the policy rendering targets supported by Rosetta.
 func Targets() []string {
-	return append([]string(nil), targets...)
+	return rosetta.Targets()
 }
 
 // Capabilities returns the compiler capabilities shared by the CLI and service.
 func Capabilities() []string {
-	return []string{"compile", "check", "explain", "capabilities", "targets", "openapi"}
+	result, err := rosetta.Capabilities(context.Background(), rosetta.CapabilitiesRequest{})
+	if err != nil {
+		return nil
+	}
+	return result.Capabilities
 }
 
 // Compile validates source policy text and renders it for the requested target.
 func Compile(source, target string) (string, error) {
-	if err := validateSource(source); err != nil {
+	result, err := rosetta.Compile(context.Background(), rosetta.CompileRequest{Source: source, Target: target})
+	if err != nil {
 		return "", err
 	}
-	if target == "" {
-		target = targets[0]
-	}
-	if !supportedTarget(target) {
-		return "", fmt.Errorf("unsupported target %q", target)
-	}
-	return fmt.Sprintf("# target: %s\n%s", target, strings.TrimSpace(source)), nil
+	return result.Output, nil
 }
 
 // Check validates source policy text.
 func Check(source string) []error {
-	if err := validateSource(source); err != nil {
+	result, err := rosetta.Check(context.Background(), rosetta.CheckRequest{Source: source})
+	if err != nil {
 		return []error{err}
 	}
-	return nil
+	if result.Valid {
+		return nil
+	}
+	errs := make([]error, 0, len(result.Errors))
+	for _, message := range result.Errors {
+		errs = append(errs, errString(message))
+	}
+	return errs
 }
 
 // Explain describes how Rosetta would process the source policy text.
 func Explain(source, target string) (string, error) {
-	if err := validateSource(source); err != nil {
+	result, err := rosetta.Explain(context.Background(), rosetta.ExplainRequest{Source: source, Target: target})
+	if err != nil {
 		return "", err
 	}
-	if target == "" {
-		target = targets[0]
-	}
-	if !supportedTarget(target) {
-		return "", fmt.Errorf("unsupported target %q", target)
-	}
-	return fmt.Sprintf("Rosetta validates Cedar policy input and renders it for the %s target.", target), nil
+	return result.Explanation, nil
 }
 
-func validateSource(source string) error {
-	if strings.TrimSpace(source) == "" {
-		return errors.New("source is required")
-	}
-	return nil
-}
+type errString string
 
-func supportedTarget(target string) bool {
-	for _, candidate := range targets {
-		if candidate == target {
-			return true
-		}
-	}
-	return false
-}
+func (e errString) Error() string { return string(e) }

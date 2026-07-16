@@ -5,7 +5,7 @@ import (
 	"net/http"
 
 	"rosetta/internal/api"
-	"rosetta/internal/compiler"
+	"rosetta/internal/rosetta"
 )
 
 // NewHandler builds the Rosetta HTTP service router.
@@ -22,54 +22,59 @@ func NewHandler() http.Handler {
 }
 
 func compileHandler(w http.ResponseWriter, r *http.Request) {
-	var req api.CompileRequest
+	var req rosetta.CompileRequest
 	if !decodeJSON(w, r, &req) {
 		return
 	}
-	output, err := compiler.Compile(req.Source, req.Target)
+	result, err := rosetta.Compile(r.Context(), req)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, api.CompileResponse{Output: output, Target: targetOrDefault(req.Target)})
+	writeJSON(w, http.StatusOK, result)
 }
 
 func checkHandler(w http.ResponseWriter, r *http.Request) {
-	var req api.CheckRequest
+	var req rosetta.CheckRequest
 	if !decodeJSON(w, r, &req) {
 		return
 	}
-	errs := compiler.Check(req.Source)
-	if len(errs) == 0 {
-		writeJSON(w, http.StatusOK, api.CheckResponse{Valid: true})
-		return
-	}
-	messages := make([]string, 0, len(errs))
-	for _, err := range errs {
-		messages = append(messages, err.Error())
-	}
-	writeJSON(w, http.StatusBadRequest, api.CheckResponse{Valid: false, Errors: messages})
-}
-
-func explainHandler(w http.ResponseWriter, r *http.Request) {
-	var req api.ExplainRequest
-	if !decodeJSON(w, r, &req) {
-		return
-	}
-	explanation, err := compiler.Explain(req.Source, req.Target)
+	result, err := rosetta.Check(r.Context(), req)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, api.ExplainResponse{Explanation: explanation})
+	status := http.StatusOK
+	if !result.Valid {
+		status = http.StatusBadRequest
+	}
+	writeJSON(w, status, result)
 }
 
-func capabilitiesHandler(w http.ResponseWriter, _ *http.Request) {
-	writeJSON(w, http.StatusOK, api.CapabilitiesResponse{Version: compiler.Version, Capabilities: compiler.Capabilities()})
+func explainHandler(w http.ResponseWriter, r *http.Request) {
+	var req rosetta.ExplainRequest
+	if !decodeJSON(w, r, &req) {
+		return
+	}
+	result, err := rosetta.Explain(r.Context(), req)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, result)
+}
+
+func capabilitiesHandler(w http.ResponseWriter, r *http.Request) {
+	result, err := rosetta.Capabilities(r.Context(), rosetta.CapabilitiesRequest{})
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, result)
 }
 
 func targetsHandler(w http.ResponseWriter, _ *http.Request) {
-	writeJSON(w, http.StatusOK, api.TargetsResponse{Targets: compiler.Targets()})
+	writeJSON(w, http.StatusOK, api.TargetsResponse{Targets: rosetta.Targets()})
 }
 
 func openAPIHandler(w http.ResponseWriter, _ *http.Request) {
@@ -101,11 +106,4 @@ func writeJSON(w http.ResponseWriter, status int, body any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(body)
-}
-
-func targetOrDefault(target string) string {
-	if target != "" {
-		return target
-	}
-	return compiler.Targets()[0]
 }
