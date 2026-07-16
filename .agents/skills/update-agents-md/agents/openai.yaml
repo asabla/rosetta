@@ -1,0 +1,4 @@
+interface:
+  display_name: "Update AGENTS.md"
+  short_description: "Keep repository agent guidance accurate"
+  default_prompt: "Use $update-agents-md to review and update this repository’s AGENTS.md."
