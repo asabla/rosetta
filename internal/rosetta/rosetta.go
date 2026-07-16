@@ -11,10 +11,18 @@ const Version = "0.1.0"
 
 var targets = []string{"openshell"}
 
+const (
+	// ModeStrict fails when translation would be lossy, unsupported, or access-broadening.
+	ModeStrict = "strict"
+	// ModePermissive returns safe approximation artifacts with warnings when possible.
+	ModePermissive = "permissive"
+)
+
 // CompileRequest describes policy source translation into a target artifact.
 type CompileRequest struct {
 	Source string `json:"source"`
 	Target string `json:"target"`
+	Mode   string `json:"mode,omitempty"`
 }
 
 // CompileResult contains generated translation output and metadata.
@@ -28,6 +36,7 @@ type CompileResult struct {
 // CheckRequest describes policy source validation.
 type CheckRequest struct {
 	Source string `json:"source"`
+	Mode   string `json:"mode,omitempty"`
 }
 
 // CheckResult contains validation status and diagnostics.
@@ -41,6 +50,7 @@ type CheckResult struct {
 type ExplainRequest struct {
 	Source string `json:"source"`
 	Target string `json:"target,omitempty"`
+	Mode   string `json:"mode,omitempty"`
 }
 
 // ExplainResult contains a human-readable translation explanation.
@@ -116,6 +126,10 @@ func Compile(ctx context.Context, req CompileRequest) (*CompileResult, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
+	mode, err := modeOrDefault(req.Mode)
+	if err != nil {
+		return nil, err
+	}
 	if diagnostic, ok := validateSource(req.Source); !ok {
 		return nil, diagnosticError(diagnostic)
 	}
@@ -125,8 +139,9 @@ func Compile(ctx context.Context, req CompileRequest) (*CompileResult, error) {
 	}
 	output := fmt.Sprintf("# target: %s\n%s", target, strings.TrimSpace(req.Source))
 	return &CompileResult{
-		Output: output,
-		Target: target,
+		Output:      output,
+		Target:      target,
+		Diagnostics: modeDiagnostics(mode),
 		Artifacts: []Artifact{{
 			Name:        target + ".policy",
 			PathHint:    target + ".policy",
@@ -144,15 +159,23 @@ func Check(ctx context.Context, req CheckRequest) (*CheckResult, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
+	mode, err := modeOrDefault(req.Mode)
+	if err != nil {
+		return nil, err
+	}
 	if diagnostic, ok := validateSource(req.Source); !ok {
 		return &CheckResult{Valid: false, Diagnostics: []Diagnostic{diagnostic}, Errors: []string{diagnostic.Message}}, nil
 	}
-	return &CheckResult{Valid: true}, nil
+	return &CheckResult{Valid: true, Diagnostics: modeDiagnostics(mode)}, nil
 }
 
 // Explain describes how Rosetta would process the source policy text.
 func Explain(ctx context.Context, req ExplainRequest) (*ExplainResult, error) {
 	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	mode, err := modeOrDefault(req.Mode)
+	if err != nil {
 		return nil, err
 	}
 	if diagnostic, ok := validateSource(req.Source); !ok {
@@ -162,7 +185,10 @@ func Explain(ctx context.Context, req ExplainRequest) (*ExplainResult, error) {
 	if !supportedTarget(target) {
 		return nil, fmt.Errorf("unsupported target %q", target)
 	}
-	return &ExplainResult{Explanation: fmt.Sprintf("Rosetta validates Cedar policy input and renders it for the %s target.", target)}, nil
+	return &ExplainResult{
+		Explanation: fmt.Sprintf("Rosetta validates Cedar policy input and renders it for the %s target in %s mode.", target, mode),
+		Diagnostics: modeDiagnostics(mode),
+	}, nil
 }
 
 func validateSource(source string) (Diagnostic, bool) {
@@ -193,4 +219,28 @@ func supportedTarget(target string) bool {
 		}
 	}
 	return false
+}
+
+func modeOrDefault(mode string) (string, error) {
+	if mode == "" {
+		return ModeStrict, nil
+	}
+	switch mode {
+	case ModeStrict, ModePermissive:
+		return mode, nil
+	default:
+		return "", fmt.Errorf("unsupported mode %q", mode)
+	}
+}
+
+func modeDiagnostics(mode string) []Diagnostic {
+	if mode != ModePermissive {
+		return nil
+	}
+	return []Diagnostic{{
+		Severity:    "warning",
+		Code:        "permissive_mode",
+		Message:     "permissive mode may return safe approximations with warnings; it never silently broadens a Cedar deny into a target allow",
+		Recoverable: true,
+	}}
 }

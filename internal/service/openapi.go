@@ -69,17 +69,18 @@ func successResponse(responseName string) map[string]any {
 
 func schemas() map[string]any {
 	return map[string]any{
-		"CompilePolicyRequest":  objectSchema("Request to translate Cedar policy source into a target-specific policy artifact.", []string{"source"}, propertyMap(policySourceProperty(), targetProperty(), targetOptionsProperty()), compileExamples()),
+		"CompilePolicyRequest":  objectSchema("Request to translate Cedar policy source into a target-specific policy artifact.", []string{"source"}, propertyMap(policySourceProperty(), targetProperty(), modeProperty(), targetOptionsProperty()), compileExamples()),
 		"CompilePolicyResponse": objectSchema("Response containing generated policy artifacts for the requested target.", []string{"target", "artifacts"}, propertyMap(targetProperty(), artifactsProperty(), diagnosticsProperty()), nil),
-		"CheckPolicyRequest":    objectSchema("Request to validate Cedar policy source without generating target artifacts.", []string{"source"}, propertyMap(policySourceProperty()), nil),
+		"CheckPolicyRequest":    objectSchema("Request to validate Cedar policy source without generating target artifacts.", []string{"source"}, propertyMap(policySourceProperty(), modeProperty()), nil),
 		"CheckPolicyResponse":   objectSchema("Response describing whether policy source is valid and any diagnostics found.", []string{"valid"}, propertyMap(boolProperty("valid", "Whether the supplied policy source passed validation."), diagnosticsProperty()), nil),
-		"ExplainPolicyRequest":  objectSchema("Request to explain how Cedar policy source would be translated for a target.", []string{"source"}, propertyMap(policySourceProperty(), targetProperty(), targetOptionsProperty()), nil),
+		"ExplainPolicyRequest":  objectSchema("Request to explain how Cedar policy source would be translated for a target.", []string{"source"}, propertyMap(policySourceProperty(), targetProperty(), modeProperty(), targetOptionsProperty()), nil),
 		"ExplainPolicyResponse": objectSchema("Response containing a human-readable explanation of the translation process.", []string{"explanation"}, propertyMap(stringProperty("explanation", "Explanation of validation, normalization, and target rendering decisions."), diagnosticsProperty()), nil),
 		"TargetCapability":      objectSchema("Capability metadata for one Rosetta translation target.", []string{"target", "displayName", "description"}, propertyMap(targetProperty(), stringProperty("displayName", "Human-readable target name."), stringProperty("description", "Summary of the target integration and generated output."), arrayProperty("features", "Supported translation features for this target.", stringSchema("Feature name."))), nil),
 		"Diagnostic":            diagnosticSchema(),
 		"SourceSpan":            objectSchema("Source range associated with a diagnostic.", nil, propertyMap(intProperty("startLine", "One-based starting line for the source range."), intProperty("startColumn", "One-based starting column for the source range."), intProperty("endLine", "One-based ending line for the source range."), intProperty("endColumn", "One-based ending column for the source range.")), nil),
 		"Artifact":              artifactSchema(),
 		"PolicySource":          stringSchema("Raw Cedar policy source submitted to Rosetta."),
+		"CompilationMode":       compilationModeSchema(),
 		"TargetOptions":         objectSchema("Target-specific options for Rosetta policy translation.", nil, propertyMap(refProperty("openShell", "OpenShell translation options.", "OpenShellOptions"), refProperty("openCode", "OpenCode translation options.", "OpenCodeOptions"), refProperty("codex", "Codex translation options.", "CodexOptions"), refProperty("claudeCode", "Claude Code translation options.", "ClaudeCodeOptions")), nil),
 		"OpenShellOptions":      objectSchema("Options that control OpenShell policy artifact generation.", nil, propertyMap(stringProperty("profileName", "OpenShell profile name to embed in generated output.")), nil),
 		"OpenCodeOptions":       objectSchema("Options that control OpenCode policy artifact generation.", nil, propertyMap(stringProperty("workspaceRoot", "Workspace root path used by OpenCode policies.")), nil),
@@ -149,7 +150,7 @@ func propertyMap(properties ...map[string]any) map[string]any {
 
 func compileExamples() []any {
 	return []any{
-		map[string]any{"source": "permit(principal, action, resource);", "target": "openshell", "options": map[string]any{"openShell": map[string]any{"profileName": "default"}}},
+		map[string]any{"source": "permit(principal, action, resource);", "target": "openshell", "mode": "strict", "options": map[string]any{"openShell": map[string]any{"profileName": "default"}}},
 		map[string]any{"source": "permit(principal, action, resource);", "target": "opencode", "options": map[string]any{"openCode": map[string]any{"workspaceRoot": "/workspace"}}},
 		map[string]any{"source": "permit(principal, action, resource);", "target": "codex", "options": map[string]any{"codex": map[string]any{"approvalMode": "on-request"}}},
 		map[string]any{"source": "permit(principal, action, resource);", "target": "claude-code", "options": map[string]any{"claudeCode": map[string]any{"settingsScope": "project"}}},
@@ -166,6 +167,10 @@ func refProperty(name, description, refName string) map[string]any {
 
 func policySourceProperty() map[string]any {
 	return refProperty("source", "Cedar policy source to process.", "PolicySource")
+}
+
+func modeProperty() map[string]any {
+	return refProperty("mode", "Compilation mode. Use strict for CI and gateway use. Permissive may return safe approximations with warnings, but must never silently broaden a Cedar deny into a target allow.", "CompilationMode")
 }
 
 func targetOptionsProperty() map[string]any {
@@ -201,4 +206,13 @@ func objectProperty(name, description string) map[string]any {
 }
 func stringSchema(description string) map[string]any {
 	return map[string]any{"type": "string", "description": description}
+}
+
+func compilationModeSchema() map[string]any {
+	return map[string]any{
+		"type":        "string",
+		"description": "Compilation mode. strict is the recommended default for CI and gateway use because it fails when translation would be lossy, unsupported, or access-broadening. permissive returns generated artifacts when safe approximations exist and includes warnings, but never silently broadens a Cedar deny into a target allow.",
+		"enum":        []any{"strict", "permissive"},
+		"default":     "strict",
+	}
 }
