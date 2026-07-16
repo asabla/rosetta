@@ -60,17 +60,38 @@ type CapabilitiesResult struct {
 }
 
 // Diagnostic describes a validation or translation message.
+//
+// Code is stable enough for automation. Message is intended to remain
+// human-readable and may change as Rosetta improves diagnostic wording.
 type Diagnostic struct {
-	Message  string `json:"message"`
-	Severity string `json:"severity"`
-	Code     string `json:"code,omitempty"`
+	Severity         string         `json:"severity"`
+	Code             string         `json:"code"`
+	Message          string         `json:"message"`
+	Details          map[string]any `json:"details,omitempty"`
+	SourceSpan       *SourceSpan    `json:"sourceSpan,omitempty"`
+	Target           string         `json:"target,omitempty"`
+	RuleID           string         `json:"ruleId,omitempty"`
+	Recoverable      bool           `json:"recoverable,omitempty"`
+	DocumentationURL string         `json:"documentationUrl,omitempty"`
+}
+
+// SourceSpan identifies a source range related to a diagnostic.
+type SourceSpan struct {
+	StartLine   int `json:"startLine,omitempty"`
+	StartColumn int `json:"startColumn,omitempty"`
+	EndLine     int `json:"endLine,omitempty"`
+	EndColumn   int `json:"endColumn,omitempty"`
 }
 
 // Artifact describes a generated target artifact.
 type Artifact struct {
 	Name        string `json:"name"`
+	PathHint    string `json:"pathHint,omitempty"`
+	MediaType   string `json:"mediaType"`
+	Target      string `json:"target,omitempty"`
 	Content     string `json:"content"`
-	ContentType string `json:"contentType"`
+	Encoding    string `json:"encoding"`
+	Description string `json:"description,omitempty"`
 }
 
 // Targets returns the policy rendering targets supported by Rosetta.
@@ -108,8 +129,12 @@ func Compile(ctx context.Context, req CompileRequest) (*CompileResult, error) {
 		Target: target,
 		Artifacts: []Artifact{{
 			Name:        target + ".policy",
+			PathHint:    target + ".policy",
+			MediaType:   "text/plain; charset=utf-8",
+			Target:      target,
 			Content:     output,
-			ContentType: "text/plain; charset=utf-8",
+			Encoding:    "plain",
+			Description: "Rendered policy artifact for the requested target.",
 		}},
 	}, nil
 }
