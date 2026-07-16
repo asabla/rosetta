@@ -164,14 +164,11 @@ func schemas() map[string]any {
 			"codex":     ref("CodexOptions"),
 		}),
 		"OpenShellOptions": object("OpenShell hardening options.", nil, map[string]any{
-			"includeWorkdir":        map[string]any{"type": "boolean"},
-			"landlockCompatibility": map[string]any{"type": "string", "enum": []string{"hard_requirement", "best_effort"}},
-			"runAsUser":             map[string]any{"type": "string"},
-			"runAsGroup":            map[string]any{"type": "string"},
+			"runAsUser":  map[string]any{"type": "string"},
+			"runAsGroup": map[string]any{"type": "string"},
 		}),
 		"CodexOptions": object("Codex permission-profile options.", nil, map[string]any{
-			"profileName":   map[string]any{"type": "string"},
-			"workspaceRoot": map[string]any{"type": "string"},
+			"profileName": map[string]any{"type": "string"},
 			"mcpServers": map[string]any{
 				"type":                 "object",
 				"additionalProperties": ref("CodexMCPServer"),
