@@ -23,7 +23,7 @@ func testCatalog() Catalog {
 			{ID: "src-write", Kind: KindFilesystem, Action: "write", Selector: "/workspace/src"},
 			{ID: "git-status", Kind: KindCommand, Action: "execute", Selector: "git status"},
 			{ID: "read-tool", Kind: KindTool, Action: "use", Selector: "Read", Server: "filesystem"},
-			{ID: "github", Kind: KindNetwork, Action: "connect", Selector: "api.github.com", Port: 443, Protocol: "rest", Access: "read-only", Binaries: []string{"/usr/bin/gh"}},
+			{ID: "github", Kind: KindNetwork, Action: "connect", Selector: "api.github.com", Port: 443, Protocol: "rest", Access: "read-only", Binaries: []string{"/usr/bin/gh"}, Targets: []string{TargetOpenShell}},
 		},
 	}
 }
@@ -63,14 +63,18 @@ func TestCompileTargetsAreDeterministicAndRestrictive(t *testing.T) {
 		t.Run(tt.target, func(t *testing.T) {
 			mode := ModeStrict
 			catalog := testCatalog()
-			if tt.target == TargetOpenShell || tt.target == TargetCodex {
+			var options TargetOptions
+			if tt.target == TargetOpenShell || tt.target == TargetCodex || tt.target == TargetClaude {
 				mode = ModePermissive
 			}
-			first, err := Compile(context.Background(), CompileRequest{Source: testPolicy, Target: tt.target, Catalog: catalog, Mode: mode, Options: testOptions()})
+			if tt.target == TargetCodex {
+				options = testOptions()
+			}
+			first, err := Compile(context.Background(), CompileRequest{Source: testPolicy, Target: tt.target, Catalog: catalog, Mode: mode, Options: options})
 			if err != nil {
 				t.Fatalf("compile: %v", err)
 			}
-			second, err := Compile(context.Background(), CompileRequest{Source: testPolicy, Target: tt.target, Catalog: catalog, Mode: mode, Options: testOptions()})
+			second, err := Compile(context.Background(), CompileRequest{Source: testPolicy, Target: tt.target, Catalog: catalog, Mode: mode, Options: options})
 			if err != nil {
 				t.Fatalf("compile twice: %v", err)
 			}
@@ -81,6 +85,123 @@ func TestCompileTargetsAreDeterministicAndRestrictive(t *testing.T) {
 				if !strings.Contains(first.Output, want) {
 					t.Fatalf("artifact missing %q:\n%s", want, first.Output)
 				}
+			}
+		})
+	}
+}
+
+func TestOpenShellRejectsUncataloguedAndFailOpenOptions(t *testing.T) {
+	catalog := Catalog{
+		Version:      CatalogVersion,
+		Principal:    EntityRef{ID: "agent"},
+		Capabilities: []Capability{{ID: "workspace", Kind: KindFilesystem, Action: "write", Selector: "/workspace"}},
+	}
+	for _, options := range []OpenShellOptions{
+		{IncludeWorkdir: true},
+		{LandlockCompatibility: "best_effort"},
+	} {
+		_, err := Compile(context.Background(), CompileRequest{
+			Source: "permit(principal, action, resource);", Target: TargetOpenShell, Catalog: catalog,
+			Options: TargetOptions{OpenShell: options},
+		})
+		if err == nil {
+			t.Fatalf("expected unsafe OpenShell options %#v to be rejected", options)
+		}
+	}
+}
+
+func TestStrictModeChecksCompleteNetworkSemantics(t *testing.T) {
+	catalog := Catalog{
+		Version:   CatalogVersion,
+		Principal: EntityRef{ID: "agent"},
+		Capabilities: []Capability{{
+			ID: "network", Kind: KindNetwork, Action: "connect", Selector: "api.example.com", Port: 443,
+			Protocol: "rest", Access: "read-only", Binaries: []string{"/usr/bin/curl"},
+		}},
+	}
+	_, err := Compile(context.Background(), CompileRequest{
+		Source: "permit(principal, action, resource);", Target: TargetOpenCode, Catalog: catalog,
+	})
+	if err == nil || !strings.Contains(err.Error(), "executable") {
+		t.Fatalf("expected field-level representability error, got %v", err)
+	}
+}
+
+func TestPermissiveModeSafelyOmitsUnrepresentableCapability(t *testing.T) {
+	catalog := Catalog{
+		Version:      CatalogVersion,
+		Principal:    EntityRef{ID: "agent"},
+		Capabilities: []Capability{{ID: "network", Kind: KindNetwork, Action: "connect", Selector: "api.example.com", Port: 443}},
+	}
+	result, err := Compile(context.Background(), CompileRequest{
+		Source: "permit(principal, action, resource);", Target: TargetClaude, Mode: ModePermissive, Catalog: catalog,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(result.Output, "api.example.com") {
+		t.Fatal("unrepresentable network capability was rendered")
+	}
+	found := false
+	for _, diagnostic := range result.Diagnostics {
+		found = found || diagnostic.Code == "capability_omitted"
+	}
+	if !found {
+		t.Fatal("expected capability_omitted diagnostic")
+	}
+}
+
+func TestCodexProfileDoesNotInheritBroadReadAccess(t *testing.T) {
+	catalog := Catalog{
+		Version:      CatalogVersion,
+		Principal:    EntityRef{ID: "agent"},
+		Capabilities: []Capability{{ID: "workspace", Kind: KindFilesystem, Action: "read", Selector: "/workspace/src"}},
+	}
+	result, err := Compile(context.Background(), CompileRequest{
+		Source: "permit(principal, action, resource);", Target: TargetCodex, Catalog: catalog,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(result.Output, `extends = ":read-only"`) {
+		t.Fatal("generated Codex profile must not inherit broad read access")
+	}
+}
+
+func TestCompileRejectsAllowedCapabilityOverlappingDeny(t *testing.T) {
+	tests := []struct {
+		name         string
+		capabilities []Capability
+		policy       string
+		target       string
+	}{
+		{
+			name: "filesystem child deny",
+			capabilities: []Capability{
+				{ID: "workspace", Kind: KindFilesystem, Action: "write", Selector: "/workspace"},
+				{ID: "secret", Kind: KindFilesystem, Action: "read", Selector: "/workspace/secret"},
+			},
+			policy: `permit(principal, action, resource) unless { resource.selector == "/workspace/secret" };`,
+			target: TargetOpenShell,
+		},
+		{
+			name: "command wildcard deny",
+			capabilities: []Capability{
+				{ID: "git", Kind: KindCommand, Action: "execute", Selector: "git *"},
+				{ID: "push", Kind: KindCommand, Action: "execute", Selector: "git push"},
+			},
+			policy: `permit(principal, action, resource) unless { resource.selector == "git push" };`,
+			target: TargetOpenCode,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := Compile(context.Background(), CompileRequest{
+				Source: tt.policy, Target: tt.target,
+				Catalog: Catalog{Version: CatalogVersion, Principal: EntityRef{ID: "agent"}, Capabilities: tt.capabilities},
+			})
+			if err == nil || !strings.Contains(err.Error(), "overlaps denied capability") {
+				t.Fatalf("expected overlap rejection, got %v", err)
 			}
 		})
 	}
@@ -174,7 +295,7 @@ func TestCompileIsSafeForConcurrentSDKUse(t *testing.T) {
 		group.Add(1)
 		go func() {
 			defer group.Done()
-			_, err := Compile(context.Background(), CompileRequest{Source: testPolicy, Target: TargetOpenCode, Catalog: testCatalog(), Options: testOptions()})
+			_, err := Compile(context.Background(), CompileRequest{Source: testPolicy, Target: TargetOpenCode, Catalog: testCatalog()})
 			errors <- err
 		}()
 	}
