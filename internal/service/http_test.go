@@ -94,4 +94,30 @@ func TestOpenAPISchemaUsesOperationIDsAndDescribedSchemas(t *testing.T) {
 			t.Fatalf("expected OpenAPI schema to include %s", expected)
 		}
 	}
+	for _, rejected := range []string{`"includeWorkdir"`, `"landlockCompatibility"`, `"workspaceRoot"`} {
+		if strings.Contains(string(doc), rejected) {
+			t.Fatalf("OpenAPI schema advertises non-authorizing fixed field %s", rejected)
+		}
+	}
+}
+
+func TestCompileEndpointRejectsAuthorizationAddingOptions(t *testing.T) {
+	for _, options := range []string{
+		`{"openShell":{"includeWorkdir":true}}`,
+		`{"openShell":{"landlockCompatibility":"best_effort"}}`,
+		`{"codex":{"workspaceRoot":"/sensitive"}}`,
+	} {
+		body := `{
+            "source":"permit(principal, action, resource);",
+            "target":"openshell",
+            "catalog":{"version":"rosetta/v0.5","principal":{"id":"agent"},"capabilities":[]},
+            "options":` + options + `
+        }`
+		req := httptest.NewRequest(http.MethodPost, "/v1/compile", strings.NewReader(body))
+		rec := httptest.NewRecorder()
+		NewHandler().ServeHTTP(rec, req)
+		if rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), "unknown field") {
+			t.Fatalf("expected unknown authorization option %s to be rejected, got %d: %s", options, rec.Code, rec.Body.String())
+		}
+	}
 }

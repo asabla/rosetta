@@ -146,3 +146,19 @@ func TestCLISourceReadIsBounded(t *testing.T) {
 		t.Fatalf("expected bounded source error, got %v", err)
 	}
 }
+
+func TestCLIOptionsRejectAuthorizationAddingFields(t *testing.T) {
+	for _, body := range []string{
+		`{"openShell":{"includeWorkdir":true}}`,
+		`{"openShell":{"landlockCompatibility":"best_effort"}}`,
+		`{"codex":{"workspaceRoot":"/sensitive"}}`,
+	} {
+		path := t.TempDir() + "/options.json"
+		if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := readOptions(path); err == nil || !strings.Contains(err.Error(), "unknown field") {
+			t.Fatalf("expected authorization option %s to be rejected, got %v", body, err)
+		}
+	}
+}
