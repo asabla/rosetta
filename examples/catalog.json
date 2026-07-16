@@ -1,5 +1,5 @@
 {
-  "version": "rosetta/v0.5",
+  "version": "rosetta/v1",
   "principal": {
     "id": "local-agent",
     "roles": ["developer"]

@@ -1,7 +1,7 @@
 package rosetta
 
 // Version is the Rosetta API and compiler version.
-const Version = "0.5.0"
+const Version = "1.0.0"
 
 const (
 	ModeStrict     = "strict"

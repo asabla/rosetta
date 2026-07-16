@@ -12,7 +12,7 @@ func TestCompileEndpoint(t *testing.T) {
         "source":"permit(principal, action, resource);",
         "target":"openshell",
         "catalog":{
-            "version":"rosetta/v0.5",
+            "version":"rosetta/v1",
             "principal":{"id":"agent"},
             "capabilities":[{"id":"workspace","kind":"filesystem","action":"read","selector":"/workspace"}]
         }
@@ -87,8 +87,8 @@ func TestOpenAPISchemaUsesOperationIDsAndDescribedSchemas(t *testing.T) {
 		`"targetContractVersion"`,
 		`"inputSha256"`,
 		`"artifactSha256"`,
-		`"const": "rosetta/v0.5"`,
-		`"version": "0.5.0"`,
+		`"const": "rosetta/v1"`,
+		`"version": "1.0.0"`,
 	} {
 		if !strings.Contains(string(doc), expected) {
 			t.Fatalf("expected OpenAPI schema to include %s", expected)
@@ -110,7 +110,7 @@ func TestCompileEndpointRejectsAuthorizationAddingOptions(t *testing.T) {
 		body := `{
             "source":"permit(principal, action, resource);",
             "target":"openshell",
-            "catalog":{"version":"rosetta/v0.5","principal":{"id":"agent"},"capabilities":[]},
+            "catalog":{"version":"rosetta/v1","principal":{"id":"agent"},"capabilities":[]},
             "options":` + options + `
         }`
 		req := httptest.NewRequest(http.MethodPost, "/v1/compile", strings.NewReader(body))

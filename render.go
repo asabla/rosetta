@@ -111,7 +111,7 @@ func renderOpenShell(capabilities []Capability, options OpenShellOptions) (Artif
 				}
 			}
 			if capability.Protocol == "mcp" || capability.Protocol == "json-rpc" {
-				return Artifact{}, fmt.Errorf("OpenShell capability %q requires explicit protocol rules that are not present in the v0.5 catalog", capability.ID)
+				return Artifact{}, fmt.Errorf("OpenShell capability %q requires explicit protocol rules that are not present in the v1 catalog", capability.ID)
 			}
 			if capability.Protocol != "" && capability.Protocol != "rest" && capability.Protocol != "websocket" && capability.Protocol != "graphql" {
 				return Artifact{}, fmt.Errorf("OpenShell capability %q has invalid protocol %q", capability.ID, capability.Protocol)
@@ -441,7 +441,7 @@ func representabilityError(target string, capability Capability, options TargetO
 			return ""
 		case KindNetwork:
 			if capability.Protocol == "mcp" || capability.Protocol == "json-rpc" {
-				return "the v0.5 catalog cannot express the required protocol rules"
+				return "the v1 catalog cannot express the required protocol rules"
 			}
 			return ""
 		default:
@@ -484,7 +484,7 @@ func representabilityError(target string, capability Capability, options TargetO
 			}
 			return ""
 		}
-		return "capability kind is not enforced by Codex v0.5 output"
+		return "capability kind is not enforced by Codex v1 output"
 	case TargetClaude:
 		if capability.Kind == KindFilesystem {
 			return ""
