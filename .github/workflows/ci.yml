@@ -46,6 +46,8 @@ jobs:
         run: go test . -run='^$' -fuzz=FuzzCheckNeverPanics -fuzztime=30s
       - name: Fuzz deny preservation
         run: go test . -run='^$' -fuzz=FuzzCompileNeverBroadensDeniedInput -fuzztime=30s
+      - name: Fuzz glob decision isolation
+        run: go test . -run='^$' -fuzz=FuzzGlobIntersectionNeverMissesWitness -fuzztime=30s
 
   container:
     runs-on: ubuntu-latest
