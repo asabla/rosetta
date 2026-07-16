@@ -26,6 +26,10 @@ jobs:
         run: make check
       - name: Check tag matches SDK version
         run: test "$(go run ./cmd/rosetta version)" = "rosetta ${GITHUB_REF_NAME#v}"
+      - name: Install Syft for release SBOMs
+        uses: anchore/sbom-action/download-syft@e22c389904149dbc22b58101806040fa8d37a610 # v0
+        with:
+          syft-version: 'v1.42.3'
       - name: Release binaries
         uses: goreleaser/goreleaser-action@f06c13b6b1a9625abc9e6e439d9c05a8f2190e94 # v7
         with:

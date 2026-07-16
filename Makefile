@@ -13,6 +13,7 @@ fuzz:
 
 check:
 	sh scripts/check-toolchain.sh
+	sh scripts/check-workflow-pins.sh
 	test -z "$$(gofmt -l .)"
 	go test ./...
 	go test -race ./...
