@@ -102,11 +102,12 @@ type CodexMCPServer struct {
 
 // CompileResult contains generated artifacts and the Cedar decisions behind them.
 type CompileResult struct {
-	Output      string       `json:"output"`
-	Target      string       `json:"target"`
-	Artifacts   []Artifact   `json:"artifacts"`
-	Decisions   []Decision   `json:"decisions"`
-	Diagnostics []Diagnostic `json:"diagnostics,omitempty"`
+	Output      string          `json:"output"`
+	Target      string          `json:"target"`
+	Artifacts   []Artifact      `json:"artifacts"`
+	Decisions   []Decision      `json:"decisions"`
+	Diagnostics []Diagnostic    `json:"diagnostics,omitempty"`
+	Metadata    CompileMetadata `json:"metadata"`
 }
 
 type CheckResult struct {
@@ -116,17 +117,37 @@ type CheckResult struct {
 }
 
 type ExplainResult struct {
-	Explanation string       `json:"explanation"`
-	Decisions   []Decision   `json:"decisions,omitempty"`
-	Diagnostics []Diagnostic `json:"diagnostics,omitempty"`
+	Explanation string          `json:"explanation"`
+	Decisions   []Decision      `json:"decisions,omitempty"`
+	Diagnostics []Diagnostic    `json:"diagnostics,omitempty"`
+	Metadata    CompileMetadata `json:"metadata"`
 }
 
 type CapabilitiesRequest struct{}
 
 type CapabilitiesResult struct {
-	Version      string   `json:"version"`
-	Capabilities []string `json:"capabilities"`
-	Targets      []string `json:"targets"`
+	Version         string               `json:"version"`
+	Capabilities    []string             `json:"capabilities"`
+	Targets         []string             `json:"targets"`
+	TargetContracts []TargetContractInfo `json:"targetContracts"`
+}
+
+// CompileMetadata identifies the exact Rosetta contracts and deterministic
+// inputs behind an artifact without including policy or catalog contents.
+type CompileMetadata struct {
+	CompilerVersion       string `json:"compilerVersion"`
+	CatalogVersion        string `json:"catalogVersion"`
+	TargetContractVersion string `json:"targetContractVersion"`
+	Mode                  string `json:"mode"`
+	InputSHA256           string `json:"inputSha256"`
+	ArtifactSHA256        string `json:"artifactSha256"`
+}
+
+// TargetContractInfo describes the Rosetta-owned output contract for a target.
+type TargetContractInfo struct {
+	Target   string `json:"target"`
+	Version  string `json:"version"`
+	Maturity string `json:"maturity"`
 }
 
 // Decision records how Cedar resolved one catalog entry.
