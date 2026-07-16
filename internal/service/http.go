@@ -2,10 +2,12 @@ package service
 
 import (
 	"encoding/json"
+	"errors"
+	"io"
 	"net/http"
 
-	"rosetta/internal/api"
-	"rosetta/internal/rosetta"
+	"github.com/asabla/rosetta"
+	"github.com/asabla/rosetta/internal/api"
 )
 
 // NewHandler builds the Rosetta HTTP service router.
@@ -89,10 +91,15 @@ func healthzHandler(w http.ResponseWriter, _ *http.Request) {
 
 func decodeJSON(w http.ResponseWriter, r *http.Request, dst any) bool {
 	defer r.Body.Close()
+	r.Body = http.MaxBytesReader(w, r.Body, 2<<20)
 	decoder := json.NewDecoder(r.Body)
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(dst); err != nil {
 		writeError(w, http.StatusBadRequest, err)
+		return false
+	}
+	if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
+		writeError(w, http.StatusBadRequest, errors.New("request body must contain exactly one JSON object"))
 		return false
 	}
 	return true

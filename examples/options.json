@@ -1,0 +1,11 @@
+{
+  "codex": {
+    "profileName": "rosetta",
+    "mcpServers": {
+      "filesystem": {
+        "command": "mcp-server-filesystem",
+        "args": ["/workspace/src"]
+      }
+    }
+  }
+}

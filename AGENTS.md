@@ -1,14 +1,14 @@
 # Rosetta agent guidance
 
-Rosetta is intended to validate Cedar policies and translate supported policy semantics into target-specific artifacts, beginning with OpenShell. Treat it as security-sensitive infrastructure: correctness, fail-closed behavior, maintainability, and stable contracts take priority over expedient changes.
-
-The repository is currently an early scaffold. The shared implementation only checks that source text is non-empty and prefixes it with a target comment; it does not yet parse Cedar, validate against a Cedar schema, or render an OpenShell policy. Preserve this distinction in code, documentation, examples, and review summaries. Never describe an unimplemented guarantee as operational.
+Rosetta validates Cedar policies and compiles catalogued authorization decisions into target-specific agent runtime configuration. Treat it as security-sensitive infrastructure: correctness, fail-closed behavior, maintainability, and stable contracts take priority over expedient changes. The security boundary and supported target mappings are documented in `docs/security.md` and `docs/targets.md`.
 
 ## Repository map
 
-`cmd/rosetta` contains the CLI and `cmd/rosetta-server` contains the HTTP service entry point. Shared request, result, diagnostic, artifact, and compilation behavior belongs in `internal/rosetta`. HTTP routing and the OpenAPI document live in `internal/service`; `internal/api` provides service-facing aliases. `internal/compiler` is a compatibility wrapper and must not become a second source of policy semantics.
+The module root is the public Go SDK and the only source of Cedar parsing, schema validation, authorization, representability, and rendering semantics. `compiler.go` owns the compilation pipeline, `schema.go` defines the versioned Cedar profile, `render.go` owns target output, and `types.go` defines public contracts. Keep these layers separable as they grow; a renderer must consume normalized capability decisions rather than inspect Cedar syntax.
 
-Keep Cedar parsing, normalized policy semantics, representability analysis, and target rendering separate as those layers are introduced. Avoid target-specific behavior in transport handlers. Prefer a maintained Cedar implementation over a home-grown parser, and record consequential architectural choices in documentation.
+`cmd/rosetta` contains the standalone CLI and `cmd/rosetta-server` contains the HTTP service entry point. Both call the public SDK directly. HTTP routing and the OpenAPI document live in `internal/service`; `internal/api` provides transport-facing type aliases. Keep runtime types, OpenAPI schemas, examples, and tests synchronized.
+
+The finite capability catalog is an intentional completeness boundary, not a temporary parsing workaround. Preserve its versioning, reject duplicate or ambiguous entries, and do not infer uncatalogued access. Prefer maintained upstream implementations for policy parsing and target serialization, and record consequential architectural choices in `docs/architecture.md`.
 
 ## Safety and compatibility
 
@@ -43,6 +43,8 @@ go build ./cmd/...
 ```
 
 Add or update tests whenever behavior changes. Translation work requires positive and negative cases, deterministic golden artifacts, unsupported-input diagnostics, and a regression test for every corrected security or compatibility defect. Do not claim a check passed unless it was run; report any check that could not run and why.
+
+`make check` runs the complete baseline, while `make fuzz` exercises the maintained fuzz targets. CI also builds the service container and runs both fuzz targets. Add an E2E case when a change crosses the SDK, CLI, service, or generated-file boundary.
 
 Before finishing, review the entire diff for accidental access broadening, contract drift, duplicated semantics, stale documentation, unnecessary dependencies, and unrelated changes. A change is complete only when behavior, tests, public contracts, and documentation agree.
 

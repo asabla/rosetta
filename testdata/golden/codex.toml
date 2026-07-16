@@ -1,0 +1,14 @@
+default_permissions = "rosetta"
+
+[permissions.rosetta]
+extends = ":read-only"
+
+[permissions.rosetta.filesystem]
+":minimal" = "read"
+":workspace_roots" = { "." = "deny" }
+"/workspace/src" = "write"
+
+[mcp_servers.filesystem]
+command = "mcp-server-filesystem"
+args = ["/workspace/src"]
+enabled_tools = ["read_file"]

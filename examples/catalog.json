@@ -1,0 +1,76 @@
+{
+  "version": "rosetta/v0.5",
+  "principal": {
+    "id": "local-agent",
+    "roles": ["developer"]
+  },
+  "capabilities": [
+    {
+      "id": "workspace-read",
+      "kind": "filesystem",
+      "action": "read",
+      "selector": "/workspace/src"
+    },
+    {
+      "id": "workspace-write",
+      "kind": "filesystem",
+      "action": "write",
+      "selector": "/workspace/src"
+    },
+    {
+      "id": "opencode-bash",
+      "kind": "command",
+      "action": "execute",
+      "selector": "go test *",
+      "targets": ["opencode"]
+    },
+    {
+      "id": "claude-bash",
+      "kind": "command",
+      "action": "execute",
+      "selector": "go test *",
+      "targets": ["claude-code"]
+    },
+    {
+      "id": "opencode-task",
+      "kind": "tool",
+      "action": "use",
+      "selector": "task",
+      "targets": ["opencode"]
+    },
+    {
+      "id": "claude-read",
+      "kind": "tool",
+      "action": "use",
+      "selector": "Read",
+      "targets": ["claude-code"]
+    },
+    {
+      "id": "codex-filesystem-read",
+      "kind": "tool",
+      "action": "use",
+      "selector": "read_file",
+      "server": "filesystem",
+      "targets": ["codex"]
+    },
+    {
+      "id": "openshell-github",
+      "kind": "network",
+      "action": "connect",
+      "selector": "api.github.com",
+      "port": 443,
+      "protocol": "rest",
+      "access": "read-only",
+      "binaries": ["/usr/bin/gh"],
+      "targets": ["openshell"]
+    },
+    {
+      "id": "claude-github",
+      "kind": "network",
+      "action": "connect",
+      "selector": "api.github.com",
+      "port": 443,
+      "targets": ["claude-code"]
+    }
+  ]
+}

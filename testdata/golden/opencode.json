@@ -1,0 +1,23 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "permission": {
+    "*": "deny",
+    "bash": {
+      "*": "deny",
+      "go test *": "allow"
+    },
+    "edit": {
+      "*": "deny",
+      "/workspace/src/**": "allow"
+    },
+    "external_directory": {
+      "*": "deny",
+      "/workspace/src/**": "allow"
+    },
+    "read": {
+      "*": "deny",
+      "/workspace/src/**": "allow"
+    },
+    "task": "allow"
+  }
+}

@@ -1,218 +1,210 @@
 package service
 
-import "encoding/json"
+import (
+	"encoding/json"
+
+	"github.com/asabla/rosetta"
+)
 
 // OpenAPISchema returns the Rosetta service OpenAPI document.
 func OpenAPISchema() []byte {
-	schema := map[string]any{
+	document := map[string]any{
 		"openapi": "3.1.0",
 		"info": map[string]any{
 			"title":       "Rosetta API",
-			"version":     "0.1.0",
-			"description": "HTTP API for checking Cedar policies and translating them into supported agent runtime targets.",
+			"version":     rosetta.Version,
+			"description": "Validate Cedar policies and compile catalogued capabilities into restrictive agent-runtime configuration.",
 		},
 		"paths": map[string]any{
-			"/v1/compile":      map[string]any{"post": operation("compilePolicy", "Compile policy input", "Translate Cedar policy source into a target-specific artifact.", "CompilePolicyRequest", "CompilePolicyResponse")},
-			"/v1/check":        map[string]any{"post": operation("checkPolicy", "Check policy input", "Validate Cedar policy source and return diagnostics without producing artifacts.", "CheckPolicyRequest", "CheckPolicyResponse")},
-			"/v1/explain":      map[string]any{"post": operation("explainPolicyTranslation", "Explain policy translation", "Describe how Rosetta translates Cedar policy source for a requested target.", "ExplainPolicyRequest", "ExplainPolicyResponse")},
-			"/v1/capabilities": map[string]any{"get": operationWithoutRequest("listTargetCapabilities", "List target capabilities", "List Rosetta target capabilities and service features.", "TargetCapability")},
-			"/v1/targets":      map[string]any{"get": operationWithoutRequest("listSupportedTargets", "List supported targets", "List target identifiers accepted by translation requests.", "TargetCapability")},
-			"/v1/openapi.json": map[string]any{"get": operationWithoutRequest("getOpenAPISchema", "Fetch the OpenAPI schema", "Return the OpenAPI description for this Rosetta service.", "OpenAPISchema")},
-			"/healthz":         map[string]any{"get": operationWithoutRequest("getHealth", "Health check", "Report whether the Rosetta service is available.", "HealthResponse")},
+			"/v1/compile":      map[string]any{"post": operation("compilePolicy", "Compile policy", "Compile Cedar decisions into one target artifact.", "CompilePolicyRequest", "CompilePolicyResponse")},
+			"/v1/check":        map[string]any{"post": operation("checkPolicy", "Check policy", "Parse Cedar and validate it against the Rosetta profile.", "CheckPolicyRequest", "CheckPolicyResponse")},
+			"/v1/explain":      map[string]any{"post": operation("explainPolicyTranslation", "Explain compilation", "Return the Cedar decisions behind a target artifact.", "CompilePolicyRequest", "ExplainPolicyResponse")},
+			"/v1/capabilities": map[string]any{"get": readOperation("listTargetCapabilities", "List compiler capabilities", "CapabilitiesResponse")},
+			"/v1/targets":      map[string]any{"get": readOperation("listSupportedTargets", "List supported targets", "TargetsResponse")},
+			"/v1/openapi.json": map[string]any{"get": readOperation("getOpenAPISchema", "Fetch this OpenAPI document", "OpenAPISchema")},
+			"/healthz":         map[string]any{"get": readOperation("getHealth", "Check service health", "HealthResponse")},
 		},
-		"components": map[string]any{
-			"schemas": schemas(),
-		},
+		"components": map[string]any{"schemas": schemas()},
 	}
-	body, _ := json.MarshalIndent(schema, "", "  ")
+	body, _ := json.MarshalIndent(document, "", "  ")
 	return body
 }
 
-func operation(operationID, summary, description, requestName, responseName string) map[string]any {
+func operation(id, summary, description, request, response string) map[string]any {
 	return map[string]any{
-		"operationId": operationID,
+		"operationId": id,
 		"summary":     summary,
 		"description": description,
 		"requestBody": map[string]any{
 			"required": true,
-			"content": map[string]any{
-				"application/json": map[string]any{
-					"schema": schemaRef(requestName),
-				},
-			},
+			"content":  map[string]any{"application/json": map[string]any{"schema": ref(request)}},
 		},
-		"responses": successResponse(responseName),
+		"responses": responses(response),
 	}
 }
 
-func operationWithoutRequest(operationID, summary, description, responseName string) map[string]any {
-	return map[string]any{
-		"operationId": operationID,
-		"summary":     summary,
-		"description": description,
-		"responses":   successResponse(responseName),
-	}
+func readOperation(id, summary, response string) map[string]any {
+	return map[string]any{"operationId": id, "summary": summary, "responses": responses(response)}
 }
 
-func successResponse(responseName string) map[string]any {
+func responses(name string) map[string]any {
 	return map[string]any{
-		"200": map[string]any{
-			"description": "OK",
-			"content": map[string]any{
-				"application/json": map[string]any{
-					"schema": schemaRef(responseName),
-				},
-			},
-		},
+		"200": map[string]any{"description": "OK", "content": map[string]any{"application/json": map[string]any{"schema": ref(name)}}},
+		"400": map[string]any{"description": "Invalid request", "content": map[string]any{"application/json": map[string]any{"schema": ref("ErrorResponse")}}},
 	}
 }
 
 func schemas() map[string]any {
+	stringArray := func(description string) map[string]any {
+		return map[string]any{"type": "array", "description": description, "items": map[string]any{"type": "string"}}
+	}
 	return map[string]any{
-		"CompilePolicyRequest":  objectSchema("Request to translate Cedar policy source into a target-specific policy artifact.", []string{"source"}, propertyMap(policySourceProperty(), targetProperty(), modeProperty(), targetOptionsProperty()), compileExamples()),
-		"CompilePolicyResponse": objectSchema("Response containing generated policy artifacts for the requested target.", []string{"target", "artifacts"}, propertyMap(targetProperty(), artifactsProperty(), diagnosticsProperty()), nil),
-		"CheckPolicyRequest":    objectSchema("Request to validate Cedar policy source without generating target artifacts.", []string{"source"}, propertyMap(policySourceProperty(), modeProperty()), nil),
-		"CheckPolicyResponse":   objectSchema("Response describing whether policy source is valid and any diagnostics found.", []string{"valid"}, propertyMap(boolProperty("valid", "Whether the supplied policy source passed validation."), diagnosticsProperty()), nil),
-		"ExplainPolicyRequest":  objectSchema("Request to explain how Cedar policy source would be translated for a target.", []string{"source"}, propertyMap(policySourceProperty(), targetProperty(), modeProperty(), targetOptionsProperty()), nil),
-		"ExplainPolicyResponse": objectSchema("Response containing a human-readable explanation of the translation process.", []string{"explanation"}, propertyMap(stringProperty("explanation", "Explanation of validation, normalization, and target rendering decisions."), diagnosticsProperty()), nil),
-		"TargetCapability":      objectSchema("Capability metadata for one Rosetta translation target.", []string{"target", "displayName", "description"}, propertyMap(targetProperty(), stringProperty("displayName", "Human-readable target name."), stringProperty("description", "Summary of the target integration and generated output."), arrayProperty("features", "Supported translation features for this target.", stringSchema("Feature name."))), nil),
-		"Diagnostic":            diagnosticSchema(),
-		"SourceSpan":            objectSchema("Source range associated with a diagnostic.", nil, propertyMap(intProperty("startLine", "One-based starting line for the source range."), intProperty("startColumn", "One-based starting column for the source range."), intProperty("endLine", "One-based ending line for the source range."), intProperty("endColumn", "One-based ending column for the source range.")), nil),
-		"Artifact":              artifactSchema(),
-		"PolicySource":          stringSchema("Raw Cedar policy source submitted to Rosetta."),
-		"CompilationMode":       compilationModeSchema(),
-		"TargetOptions":         objectSchema("Target-specific options for Rosetta policy translation.", nil, propertyMap(refProperty("openShell", "OpenShell translation options.", "OpenShellOptions"), refProperty("openCode", "OpenCode translation options.", "OpenCodeOptions"), refProperty("codex", "Codex translation options.", "CodexOptions"), refProperty("claudeCode", "Claude Code translation options.", "ClaudeCodeOptions")), nil),
-		"OpenShellOptions":      objectSchema("Options that control OpenShell policy artifact generation.", nil, propertyMap(stringProperty("profileName", "OpenShell profile name to embed in generated output.")), nil),
-		"OpenCodeOptions":       objectSchema("Options that control OpenCode policy artifact generation.", nil, propertyMap(stringProperty("workspaceRoot", "Workspace root path used by OpenCode policies.")), nil),
-		"CodexOptions":          objectSchema("Options that control Codex policy artifact generation.", nil, propertyMap(stringProperty("approvalMode", "Codex approval mode represented in generated policy output.")), nil),
-		"ClaudeCodeOptions":     objectSchema("Options that control Claude Code policy artifact generation.", nil, propertyMap(stringProperty("settingsScope", "Claude Code settings scope for generated policy output.")), nil),
-		"OpenAPISchema":         map[string]any{"type": "object", "description": "OpenAPI document describing the Rosetta HTTP API."},
-		"HealthResponse":        objectSchema("Health check response for the Rosetta service.", []string{"status"}, propertyMap(stringProperty("status", "Service status value.")), nil),
+		"CompilePolicyRequest": object(
+			"Cedar source, target, and the complete capability catalog to authorize.",
+			[]string{"source", "target", "catalog"},
+			map[string]any{
+				"source":  map[string]any{"type": "string"},
+				"target":  targetSchema(),
+				"mode":    modeSchema(),
+				"catalog": ref("Catalog"),
+				"options": ref("TargetOptions"),
+			},
+		),
+		"CompilePolicyResponse": object(
+			"The deterministic artifact and Cedar decision trace.",
+			[]string{"output", "target", "artifacts", "decisions"},
+			map[string]any{
+				"output":      map[string]any{"type": "string"},
+				"target":      targetSchema(),
+				"artifacts":   arrayOf("Artifact"),
+				"decisions":   arrayOf("Decision"),
+				"diagnostics": arrayOf("Diagnostic"),
+			},
+		),
+		"CheckPolicyRequest": object("Cedar source to validate.", []string{"source"}, map[string]any{
+			"source": map[string]any{"type": "string"},
+			"mode":   modeSchema(),
+		}),
+		"CheckPolicyResponse": object("Cedar validation result.", []string{"valid"}, map[string]any{
+			"valid":       map[string]any{"type": "boolean"},
+			"diagnostics": arrayOf("Diagnostic"),
+			"errors":      stringArray("Compatibility error messages."),
+		}),
+		"ExplainPolicyResponse": object("Human-readable compilation explanation and decisions.", []string{"explanation"}, map[string]any{
+			"explanation": map[string]any{"type": "string"},
+			"decisions":   arrayOf("Decision"),
+			"diagnostics": arrayOf("Diagnostic"),
+		}),
+		"Catalog": object("Finite capability universe evaluated by Cedar.", []string{"version", "principal", "capabilities"}, map[string]any{
+			"version":      map[string]any{"type": "string", "const": rosetta.CatalogVersion},
+			"principal":    ref("EntityRef"),
+			"capabilities": arrayOf("Capability"),
+		}),
+		"EntityRef": object("The Rosetta Cedar principal.", []string{"id"}, map[string]any{
+			"type":  map[string]any{"type": "string", "default": "Rosetta::Principal"},
+			"id":    map[string]any{"type": "string", "minLength": 1},
+			"roles": stringArray("Principal role attributes available to Cedar."),
+		}),
+		"Capability": object("One typed operation Cedar must allow or deny. Filesystem selectors are directory roots without glob syntax.", []string{"id", "kind", "action", "selector"}, map[string]any{
+			"id":       map[string]any{"type": "string", "minLength": 1},
+			"kind":     map[string]any{"type": "string", "enum": []string{"filesystem", "tool", "command", "network"}},
+			"action":   map[string]any{"type": "string", "enum": []string{"read", "write", "use", "execute", "connect"}},
+			"selector": map[string]any{"type": "string", "minLength": 1},
+			"targets":  stringArray("Targets for which this capability is relevant."),
+			"access":   map[string]any{"type": "string"},
+			"port":     map[string]any{"type": "integer", "minimum": 1, "maximum": 65535},
+			"protocol": map[string]any{"type": "string"},
+			"path":     map[string]any{"type": "string"},
+			"binaries": stringArray("OpenShell executable paths allowed to reach an endpoint."),
+			"server":   map[string]any{"type": "string", "description": "MCP server identifier for Codex tool capabilities."},
+		}),
+		"Decision": object("Cedar result for one catalog entry.", []string{"capabilityId", "allowed"}, map[string]any{
+			"capabilityId": map[string]any{"type": "string"},
+			"allowed":      map[string]any{"type": "boolean"},
+			"policyIds":    stringArray("Cedar policies responsible for the decision."),
+		}),
+		"Artifact": object("Generated target file.", []string{"name", "mediaType", "target", "content", "encoding"}, map[string]any{
+			"name":        map[string]any{"type": "string"},
+			"pathHint":    map[string]any{"type": "string"},
+			"mediaType":   map[string]any{"type": "string"},
+			"target":      targetSchema(),
+			"content":     map[string]any{"type": "string"},
+			"encoding":    map[string]any{"type": "string", "const": "plain"},
+			"description": map[string]any{"type": "string"},
+		}),
+		"Diagnostic": object("Machine-addressable compiler diagnostic.", []string{"severity", "code", "message"}, map[string]any{
+			"severity":         map[string]any{"type": "string", "enum": []string{"error", "warning", "info"}},
+			"code":             map[string]any{"type": "string"},
+			"message":          map[string]any{"type": "string"},
+			"details":          map[string]any{"type": "object", "additionalProperties": true},
+			"sourceSpan":       ref("SourceSpan"),
+			"target":           targetSchema(),
+			"ruleId":           map[string]any{"type": "string"},
+			"recoverable":      map[string]any{"type": "boolean"},
+			"documentationUrl": map[string]any{"type": "string", "format": "uri"},
+		}),
+		"SourceSpan": object("One-based Cedar source range.", nil, map[string]any{
+			"startLine":   map[string]any{"type": "integer"},
+			"startColumn": map[string]any{"type": "integer"},
+			"endLine":     map[string]any{"type": "integer"},
+			"endColumn":   map[string]any{"type": "integer"},
+		}),
+		"TargetOptions": object("Target-specific rendering options.", nil, map[string]any{
+			"openShell": ref("OpenShellOptions"),
+			"codex":     ref("CodexOptions"),
+		}),
+		"OpenShellOptions": object("OpenShell hardening options.", nil, map[string]any{
+			"includeWorkdir":        map[string]any{"type": "boolean"},
+			"landlockCompatibility": map[string]any{"type": "string", "enum": []string{"hard_requirement", "best_effort"}},
+			"runAsUser":             map[string]any{"type": "string"},
+			"runAsGroup":            map[string]any{"type": "string"},
+		}),
+		"CodexOptions": object("Codex permission-profile options.", nil, map[string]any{
+			"profileName":   map[string]any{"type": "string"},
+			"workspaceRoot": map[string]any{"type": "string"},
+			"mcpServers": map[string]any{
+				"type":                 "object",
+				"additionalProperties": ref("CodexMCPServer"),
+			},
+		}),
+		"CodexMCPServer": object("A self-contained stdio or HTTP MCP transport. Set exactly one of command or url.", nil, map[string]any{
+			"command":           map[string]any{"type": "string"},
+			"args":              stringArray("Stdio server arguments."),
+			"url":               map[string]any{"type": "string", "format": "uri"},
+			"bearerTokenEnvVar": map[string]any{"type": "string", "description": "Environment variable containing an HTTP bearer token."},
+		}),
+		"CapabilitiesResponse": object("Compiler metadata.", []string{"version", "capabilities", "targets"}, map[string]any{
+			"version":      map[string]any{"type": "string"},
+			"capabilities": stringArray("Compiler features."),
+			"targets":      stringArray("Supported target identifiers."),
+		}),
+		"TargetsResponse": object("Supported targets.", []string{"targets"}, map[string]any{"targets": stringArray("Supported target identifiers.")}),
+		"ErrorResponse":   object("Request failure.", []string{"error"}, map[string]any{"error": map[string]any{"type": "string"}}),
+		"OpenAPISchema":   map[string]any{"type": "object"},
+		"HealthResponse":  object("Service health.", []string{"status"}, map[string]any{"status": map[string]any{"type": "string", "const": "ok"}}),
 	}
 }
 
-func diagnosticSchema() map[string]any {
-	return objectSchema(
-		"Validation or translation diagnostic emitted while processing policy source. The code field is stable enough for automation, while message remains human-readable.",
-		[]string{"severity", "code", "message"},
-		propertyMap(
-			stringProperty("severity", "Diagnostic severity such as error, warning, or info."),
-			stringProperty("code", "Stable diagnostic code for programmatic handling."),
-			stringProperty("message", "Human-readable diagnostic text explaining the issue or warning."),
-			objectProperty("details", "Additional structured diagnostic metadata."),
-			refProperty("sourceSpan", "Source range associated with this diagnostic.", "SourceSpan"),
-			stringProperty("target", "Target identifier related to this diagnostic, when applicable."),
-			stringProperty("ruleId", "Rule identifier related to this diagnostic, when applicable."),
-			boolProperty("recoverable", "Whether processing can recover from this diagnostic."),
-			stringProperty("documentationUrl", "Documentation URL for remediation guidance."),
-		),
-		nil,
-	)
-}
-
-func artifactSchema() map[string]any {
-	return objectSchema(
-		"Generated target artifact produced by a policy translation. Content is plain text by default when encoding is plain; use base64 or another explicit encoding for encoded content.",
-		[]string{"name", "mediaType", "content", "encoding"},
-		propertyMap(
-			stringProperty("name", "Artifact file name or logical identifier."),
-			stringProperty("pathHint", "Suggested relative output path for writing this artifact."),
-			stringProperty("mediaType", "Media type for the artifact contents."),
-			stringProperty("target", "Target identifier this artifact was generated for."),
-			stringProperty("content", "Artifact contents generated for the target."),
-			stringProperty("encoding", "Encoding for content, such as plain or base64."),
-			stringProperty("description", "Human-readable summary of the generated artifact."),
-		),
-		nil,
-	)
-}
-
-func objectSchema(description string, required []string, properties map[string]any, examples []any) map[string]any {
-	schema := map[string]any{"type": "object", "description": description, "properties": properties}
+func object(description string, required []string, properties map[string]any) map[string]any {
+	result := map[string]any{"type": "object", "description": description, "properties": properties, "additionalProperties": false}
 	if len(required) > 0 {
-		schema["required"] = required
+		result["required"] = required
 	}
-	if len(examples) > 0 {
-		schema["examples"] = examples
-	}
-	return schema
+	return result
 }
 
-func propertyMap(properties ...map[string]any) map[string]any {
-	merged := map[string]any{}
-	for _, property := range properties {
-		for name, schema := range property {
-			merged[name] = schema
-		}
-	}
-	return merged
+func targetSchema() map[string]any {
+	return map[string]any{"type": "string", "enum": rosetta.Targets()}
 }
 
-func compileExamples() []any {
-	return []any{
-		map[string]any{"source": "permit(principal, action, resource);", "target": "openshell", "mode": "strict", "options": map[string]any{"openShell": map[string]any{"profileName": "default"}}},
-		map[string]any{"source": "permit(principal, action, resource);", "target": "opencode", "options": map[string]any{"openCode": map[string]any{"workspaceRoot": "/workspace"}}},
-		map[string]any{"source": "permit(principal, action, resource);", "target": "codex", "options": map[string]any{"codex": map[string]any{"approvalMode": "on-request"}}},
-		map[string]any{"source": "permit(principal, action, resource);", "target": "claude-code", "options": map[string]any{"claudeCode": map[string]any{"settingsScope": "project"}}},
-	}
+func modeSchema() map[string]any {
+	return map[string]any{"type": "string", "enum": []string{rosetta.ModeStrict, rosetta.ModePermissive}, "default": rosetta.ModeStrict}
 }
 
-func schemaRef(name string) map[string]any {
+func arrayOf(name string) map[string]any {
+	return map[string]any{"type": "array", "items": ref(name)}
+}
+
+func ref(name string) map[string]any {
 	return map[string]any{"$ref": "#/components/schemas/" + name}
-}
-
-func refProperty(name, description, refName string) map[string]any {
-	return map[string]any{name: map[string]any{"allOf": []any{schemaRef(refName)}, "description": description}}
-}
-
-func policySourceProperty() map[string]any {
-	return refProperty("source", "Cedar policy source to process.", "PolicySource")
-}
-
-func modeProperty() map[string]any {
-	return refProperty("mode", "Compilation mode. Use strict for CI and gateway use. Permissive may return safe approximations with warnings, but must never silently broaden a Cedar deny into a target allow.", "CompilationMode")
-}
-
-func targetOptionsProperty() map[string]any {
-	return refProperty("options", "Optional target-specific translation settings.", "TargetOptions")
-}
-
-func targetProperty() map[string]any {
-	return map[string]any{"target": map[string]any{"type": "string", "description": "Target identifier for generated policy output.", "examples": []any{"openshell", "opencode", "codex", "claude-code"}}}
-}
-
-func artifactsProperty() map[string]any {
-	return arrayProperty("artifacts", "Generated target artifacts.", schemaRef("Artifact"))
-}
-func diagnosticsProperty() map[string]any {
-	return arrayProperty("diagnostics", "Diagnostics emitted while processing the request.", schemaRef("Diagnostic"))
-}
-
-func arrayProperty(name, description string, items map[string]any) map[string]any {
-	return map[string]any{name: map[string]any{"type": "array", "description": description, "items": items}}
-}
-
-func stringProperty(name, description string) map[string]any {
-	return map[string]any{name: stringSchema(description)}
-}
-func boolProperty(name, description string) map[string]any {
-	return map[string]any{name: map[string]any{"type": "boolean", "description": description}}
-}
-func intProperty(name, description string) map[string]any {
-	return map[string]any{name: map[string]any{"type": "integer", "description": description}}
-}
-func objectProperty(name, description string) map[string]any {
-	return map[string]any{name: map[string]any{"type": "object", "description": description, "additionalProperties": true}}
-}
-func stringSchema(description string) map[string]any {
-	return map[string]any{"type": "string", "description": description}
-}
-
-func compilationModeSchema() map[string]any {
-	return map[string]any{
-		"type":        "string",
-		"description": "Compilation mode. strict is the recommended default for CI and gateway use because it fails when translation would be lossy, unsupported, or access-broadening. permissive returns generated artifacts when safe approximations exist and includes warnings, but never silently broadens a Cedar deny into a target allow.",
-		"enum":        []any{"strict", "permissive"},
-		"default":     "strict",
-	}
 }
