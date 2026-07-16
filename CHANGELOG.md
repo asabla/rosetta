@@ -4,7 +4,7 @@ Rosetta follows [Semantic Versioning](https://semver.org/).
 
 ## Unreleased
 
-Rosetta now validates complete target capability semantics before rendering. Unsafe OpenShell options are rejected, Codex profiles no longer inherit broad read access, Claude Code command and network mappings fail closed until an explicit runtime baseline is available, and permissive CLI compilation reports every diagnostic on stderr.
+Rosetta now validates complete target capability semantics before rendering. OpenShell fail-closed settings are fixed rather than exposed as options, Codex options cannot activate workspace roots, Claude Code command and network mappings fail closed until an explicit runtime baseline is available, and permissive CLI compilation reports every diagnostic on stderr.
 
 Generated artifacts are checked against narrow target contracts before being returned. Process-level end-to-end coverage now compiles OpenShell, OpenCode, Codex, and Claude Code through both the CLI and HTTP service.
 
