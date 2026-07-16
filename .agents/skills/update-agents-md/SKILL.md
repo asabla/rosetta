@@ -44,10 +44,10 @@ For a substantive change, review the complete candidate five times and retain on
 4. Check security, compatibility, and definition-of-done requirements for accidental weakening or ambiguity.
 5. Remove repetition, unnecessary lists, harness-specific assumptions, and wording that will become stale quickly.
 
-After each pass, record the defect found, the improvement made, and a concise quality score. A pass that finds no genuine improvement should leave the file unchanged rather than rewrite it for novelty.
+Keep concise working notes for each pass so regressions are visible while editing. Do not carry pass scores or iteration notes into the pull request description or repository guidance. A pass that finds no genuine improvement should leave the file unchanged rather than rewrite it for novelty.
 
 ## Validate and hand off
 
 Read the final file from top to bottom as a new agent would. Verify referenced paths and run safe documented commands when the change depends on them. Check that the skill remains aligned if the maintenance procedure itself changed.
 
-Summarize what changed, why it is durable, and what was validated. Report commands that were not run and the reason. Do not claim that guidance is enforced unless a corresponding test, CI check, hook, or repository rule provides that enforcement.
+Summarize the durable outcome in the final handoff. If the change is submitted through a pull request, follow the repository's PR-writing guidance: focus on why, omit diff narration and procedural review notes, and leave verification reporting to configured checks. Do not claim that guidance is enforced unless a corresponding test, CI check, hook, or repository rule provides that enforcement.
