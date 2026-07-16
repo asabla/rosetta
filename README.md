@@ -24,10 +24,10 @@ rosetta check < examples/developer.cedar
 rosetta compile --target openshell --catalog examples/catalog.json < examples/developer.cedar
 rosetta compile --target opencode --catalog examples/catalog.json < examples/developer.cedar
 rosetta compile --target codex --catalog examples/catalog.json --options examples/options.json < examples/developer.cedar
-rosetta compile --target claude-code --catalog examples/catalog.json < examples/developer.cedar
+rosetta compile --target claude-code --mode permissive --catalog examples/catalog.json < examples/developer.cedar
 ```
 
-Strict mode is the default and rejects allowed capabilities the target cannot represent without broadening access. `--mode permissive` may omit such a capability only when omission is a safe deny, and reports a diagnostic.
+Strict mode is the default and rejects allowed capabilities the target cannot represent without broadening access. `--mode permissive` may omit such a capability only when omission is a safe deny. The CLI writes every warning to stderr; SDK and HTTP callers receive the same diagnostics in the result.
 
 ## Go SDK
 
