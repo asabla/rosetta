@@ -71,14 +71,15 @@ func schemas() map[string]any {
 			},
 		),
 		"CompilePolicyResponse": object(
-			"The deterministic artifact and Cedar decision trace.",
-			[]string{"output", "target", "artifacts", "decisions"},
+			"The deterministic artifact, Cedar decision trace, and provenance metadata.",
+			[]string{"output", "target", "artifacts", "decisions", "metadata"},
 			map[string]any{
 				"output":      map[string]any{"type": "string"},
 				"target":      targetSchema(),
 				"artifacts":   arrayOf("Artifact"),
 				"decisions":   arrayOf("Decision"),
 				"diagnostics": arrayOf("Diagnostic"),
+				"metadata":    ref("CompileMetadata"),
 			},
 		),
 		"CheckPolicyRequest": object("Cedar source to validate.", []string{"source"}, map[string]any{
@@ -90,10 +91,11 @@ func schemas() map[string]any {
 			"diagnostics": arrayOf("Diagnostic"),
 			"errors":      stringArray("Compatibility error messages."),
 		}),
-		"ExplainPolicyResponse": object("Human-readable compilation explanation and decisions.", []string{"explanation"}, map[string]any{
+		"ExplainPolicyResponse": object("Human-readable compilation explanation and decisions.", []string{"explanation", "metadata"}, map[string]any{
 			"explanation": map[string]any{"type": "string"},
 			"decisions":   arrayOf("Decision"),
 			"diagnostics": arrayOf("Diagnostic"),
+			"metadata":    ref("CompileMetadata"),
 		}),
 		"Catalog": object("Finite capability universe evaluated by Cedar.", []string{"version", "principal", "capabilities"}, map[string]any{
 			"version":      map[string]any{"type": "string", "const": rosetta.CatalogVersion},
@@ -131,6 +133,14 @@ func schemas() map[string]any {
 			"content":     map[string]any{"type": "string"},
 			"encoding":    map[string]any{"type": "string", "const": "plain"},
 			"description": map[string]any{"type": "string"},
+		}),
+		"CompileMetadata": object("Deterministic provenance for a generated artifact without policy contents.", []string{"compilerVersion", "catalogVersion", "targetContractVersion", "mode", "inputSha256", "artifactSha256"}, map[string]any{
+			"compilerVersion":       map[string]any{"type": "string"},
+			"catalogVersion":        map[string]any{"type": "string"},
+			"targetContractVersion": map[string]any{"type": "string"},
+			"mode":                  modeSchema(),
+			"inputSha256":           map[string]any{"type": "string", "pattern": "^[0-9a-f]{64}$"},
+			"artifactSha256":        map[string]any{"type": "string", "pattern": "^[0-9a-f]{64}$"},
 		}),
 		"Diagnostic": object("Machine-addressable compiler diagnostic.", []string{"severity", "code", "message"}, map[string]any{
 			"severity":         map[string]any{"type": "string", "enum": []string{"error", "warning", "info"}},
@@ -173,10 +183,16 @@ func schemas() map[string]any {
 			"url":               map[string]any{"type": "string", "format": "uri"},
 			"bearerTokenEnvVar": map[string]any{"type": "string", "description": "Environment variable containing an HTTP bearer token."},
 		}),
-		"CapabilitiesResponse": object("Compiler metadata.", []string{"version", "capabilities", "targets"}, map[string]any{
-			"version":      map[string]any{"type": "string"},
-			"capabilities": stringArray("Compiler features."),
-			"targets":      stringArray("Supported target identifiers."),
+		"CapabilitiesResponse": object("Compiler metadata.", []string{"version", "capabilities", "targets", "targetContracts"}, map[string]any{
+			"version":         map[string]any{"type": "string"},
+			"capabilities":    stringArray("Compiler features."),
+			"targets":         stringArray("Supported target identifiers."),
+			"targetContracts": arrayOf("TargetContractInfo"),
+		}),
+		"TargetContractInfo": object("Versioned output contract implemented for one target.", []string{"target", "version", "maturity"}, map[string]any{
+			"target":   targetSchema(),
+			"version":  map[string]any{"type": "string"},
+			"maturity": map[string]any{"type": "string", "enum": []string{"supported", "preview"}},
 		}),
 		"TargetsResponse": object("Supported targets.", []string{"targets"}, map[string]any{"targets": stringArray("Supported target identifiers.")}),
 		"ErrorResponse":   object("Request failure.", []string{"error"}, map[string]any{"error": map[string]any{"type": "string"}}),
