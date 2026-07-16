@@ -1,6 +1,6 @@
 package rosetta
 
-// CedarSchema is the stable authorization profile compiled by Rosetta v0.5.
+// CedarSchema is the stable authorization profile compiled by Rosetta v1.
 // Optional target-specific fields let one schema describe all renderer inputs.
 const CedarSchema = `namespace Rosetta {
     entity Principal {

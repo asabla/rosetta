@@ -17,7 +17,7 @@ func TestHTTPCompileMatchesSharedCompilerAPI(t *testing.T) {
 		Source: "permit(principal, action, resource);",
 		Target: "openshell",
 		Catalog: rosetta.Catalog{
-			Version:      "rosetta/v0.5",
+			Version:      "rosetta/v1",
 			Principal:    rosetta.EntityRef{ID: "agent"},
 			Capabilities: []rosetta.Capability{{ID: "workspace", Kind: "filesystem", Action: "read", Selector: "/workspace"}},
 		},

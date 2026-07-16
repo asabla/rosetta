@@ -22,7 +22,7 @@ import (
 	"github.com/cedar-policy/cedar-go/x/exp/schema/validate"
 )
 
-const CatalogVersion = "rosetta/v0.5"
+const CatalogVersion = "rosetta/v1"
 
 const (
 	MaxSourceBytes         = 2 << 20
