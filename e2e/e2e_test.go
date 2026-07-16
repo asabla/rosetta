@@ -43,12 +43,14 @@ func TestCLIAndServiceCompileEquivalentArtifacts(t *testing.T) {
 	if err := json.Unmarshal(catalogBody, &catalog); err != nil {
 		t.Fatal(err)
 	}
-
-	command := exec.Command(cli, "compile", "--target", rosetta.TargetOpenCode, "--catalog", catalogPath)
-	command.Stdin = bytes.NewReader(policy)
-	cliOutput, err := command.CombinedOutput()
+	optionsPath := filepath.Join(root, "examples", "options.json")
+	optionsBody, err := os.ReadFile(optionsPath)
 	if err != nil {
-		t.Fatalf("CLI compile failed: %v\n%s", err, cliOutput)
+		t.Fatal(err)
+	}
+	var options rosetta.TargetOptions
+	if err := json.Unmarshal(optionsBody, &options); err != nil {
+		t.Fatal(err)
 	}
 
 	address := freeAddress(t)
@@ -66,29 +68,57 @@ func TestCLIAndServiceCompileEquivalentArtifacts(t *testing.T) {
 	})
 	waitForHealth(t, "http://"+address+"/healthz", &serverLog)
 
-	requestBody, err := json.Marshal(rosetta.CompileRequest{Source: string(policy), Target: rosetta.TargetOpenCode, Catalog: catalog})
-	if err != nil {
-		t.Fatal(err)
-	}
 	client := &http.Client{Timeout: 10 * time.Second}
-	response, err := client.Post("http://"+address+"/v1/compile", "application/json", bytes.NewReader(requestBody))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer response.Body.Close()
-	body, err := io.ReadAll(response.Body)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if response.StatusCode != http.StatusOK {
-		t.Fatalf("service compile returned %s: %s", response.Status, body)
-	}
-	var result rosetta.CompileResult
-	if err := json.Unmarshal(body, &result); err != nil {
-		t.Fatal(err)
-	}
-	if strings.TrimSpace(string(cliOutput)) != strings.TrimSpace(result.Output) {
-		t.Fatalf("CLI and service artifacts differ\nCLI:\n%s\nservice:\n%s", cliOutput, result.Output)
+	for _, target := range rosetta.Targets() {
+		t.Run(target, func(t *testing.T) {
+			mode := rosetta.ModeStrict
+			args := []string{"compile", "--target", target, "--catalog", catalogPath}
+			request := rosetta.CompileRequest{Source: string(policy), Target: target, Catalog: catalog}
+			if target == rosetta.TargetClaude {
+				mode = rosetta.ModePermissive
+				args = append(args, "--mode", mode)
+				request.Mode = mode
+			}
+			if target == rosetta.TargetCodex {
+				args = append(args, "--options", optionsPath)
+				request.Options = options
+			}
+			command := exec.Command(cli, args...)
+			command.Stdin = bytes.NewReader(policy)
+			var cliOutput, cliDiagnostics bytes.Buffer
+			command.Stdout = &cliOutput
+			command.Stderr = &cliDiagnostics
+			if err := command.Run(); err != nil {
+				t.Fatalf("CLI compile failed: %v\n%s", err, cliDiagnostics.String())
+			}
+
+			requestBody, err := json.Marshal(request)
+			if err != nil {
+				t.Fatal(err)
+			}
+			response, err := client.Post("http://"+address+"/v1/compile", "application/json", bytes.NewReader(requestBody))
+			if err != nil {
+				t.Fatal(err)
+			}
+			body, readErr := io.ReadAll(response.Body)
+			_ = response.Body.Close()
+			if readErr != nil {
+				t.Fatal(readErr)
+			}
+			if response.StatusCode != http.StatusOK {
+				t.Fatalf("service compile returned %s: %s", response.Status, body)
+			}
+			var result rosetta.CompileResult
+			if err := json.Unmarshal(body, &result); err != nil {
+				t.Fatal(err)
+			}
+			if strings.TrimSpace(cliOutput.String()) != strings.TrimSpace(result.Output) {
+				t.Fatalf("CLI and service artifacts differ\nCLI:\n%s\nservice:\n%s", cliOutput.String(), result.Output)
+			}
+			if target == rosetta.TargetClaude && !strings.Contains(cliDiagnostics.String(), "capability_omitted") {
+				t.Fatalf("expected permissive diagnostics, got %q", cliDiagnostics.String())
+			}
+		})
 	}
 }
 
