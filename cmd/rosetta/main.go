@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -12,6 +13,8 @@ import (
 
 	"github.com/asabla/rosetta"
 )
+
+const maxCLIJSONBytes = 2 << 20
 
 func main() {
 	if err := run(os.Args[1:], os.Stdin, os.Stdout, os.Stderr); err != nil {
@@ -29,12 +32,16 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 		fs := flag.NewFlagSet("compile", flag.ContinueOnError)
 		target := fs.String("target", "", "rendering target")
 		mode := fs.String("mode", rosetta.ModeStrict, "compilation mode (strict|permissive)")
+		format := fs.String("format", "text", "output format (text|json)")
 		catalogPath := fs.String("catalog", "", "path to a Rosetta capability catalog")
 		optionsPath := fs.String("options", "", "path to target rendering options")
 		if err := fs.Parse(args[1:]); err != nil {
 			return err
 		}
-		source, err := io.ReadAll(stdin)
+		if *format != "text" && *format != "json" {
+			return fmt.Errorf("unsupported output format %q", *format)
+		}
+		source, err := readSource(stdin)
 		if err != nil {
 			return err
 		}
@@ -50,6 +57,9 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 		if err != nil {
 			return err
 		}
+		if *format == "json" {
+			return writeJSON(stdout, output)
+		}
 		if err := writeDiagnostics(stderr, output.Diagnostics); err != nil {
 			return err
 		}
@@ -58,10 +68,14 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 	case "check":
 		fs := flag.NewFlagSet("check", flag.ContinueOnError)
 		mode := fs.String("mode", rosetta.ModeStrict, "compilation mode (strict|permissive)")
+		format := fs.String("format", "text", "output format (text|json)")
 		if err := fs.Parse(args[1:]); err != nil {
 			return err
 		}
-		source, err := io.ReadAll(stdin)
+		if *format != "text" && *format != "json" {
+			return fmt.Errorf("unsupported output format %q", *format)
+		}
+		source, err := readSource(stdin)
 		if err != nil {
 			return err
 		}
@@ -69,11 +83,21 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 		if err != nil {
 			return err
 		}
-		if !result.Valid {
-			if err := writeDiagnostics(stderr, result.Diagnostics); err != nil {
+		if *format == "json" {
+			if err := writeJSON(stdout, result); err != nil {
 				return err
 			}
+		}
+		if !result.Valid {
+			if *format == "text" {
+				if err := writeDiagnostics(stderr, result.Diagnostics); err != nil {
+					return err
+				}
+			}
 			return errors.New(result.Errors[0])
+		}
+		if *format == "json" {
+			return nil
 		}
 		_, err = fmt.Fprintln(stdout, "ok")
 		return err
@@ -81,12 +105,16 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 		fs := flag.NewFlagSet("explain", flag.ContinueOnError)
 		target := fs.String("target", "", "rendering target")
 		mode := fs.String("mode", rosetta.ModeStrict, "compilation mode (strict|permissive)")
+		format := fs.String("format", "text", "output format (text|json)")
 		catalogPath := fs.String("catalog", "", "path to a Rosetta capability catalog")
 		optionsPath := fs.String("options", "", "path to target rendering options")
 		if err := fs.Parse(args[1:]); err != nil {
 			return err
 		}
-		source, err := io.ReadAll(stdin)
+		if *format != "text" && *format != "json" {
+			return fmt.Errorf("unsupported output format %q", *format)
+		}
+		source, err := readSource(stdin)
 		if err != nil {
 			return err
 		}
@@ -101,6 +129,9 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 		explanation, err := rosetta.Explain(context.Background(), rosetta.ExplainRequest{Source: string(source), Target: *target, Mode: *mode, Catalog: catalog, Options: options})
 		if err != nil {
 			return err
+		}
+		if *format == "json" {
+			return writeJSON(stdout, explanation)
 		}
 		if err := writeDiagnostics(stderr, explanation.Diagnostics); err != nil {
 			return err
@@ -133,6 +164,23 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 	}
 }
 
+func readSource(in io.Reader) ([]byte, error) {
+	body, err := io.ReadAll(io.LimitReader(in, rosetta.MaxSourceBytes+1))
+	if err != nil {
+		return nil, err
+	}
+	if len(body) > rosetta.MaxSourceBytes {
+		return nil, fmt.Errorf("source exceeds %d bytes", rosetta.MaxSourceBytes)
+	}
+	return body, nil
+}
+
+func writeJSON(out io.Writer, value any) error {
+	encoder := json.NewEncoder(out)
+	encoder.SetIndent("", "  ")
+	return encoder.Encode(value)
+}
+
 func writeDiagnostics(out io.Writer, diagnostics []rosetta.Diagnostic) error {
 	for _, diagnostic := range diagnostics {
 		if _, err := fmt.Fprintf(out, "%s[%s]: %s\n", diagnostic.Severity, diagnostic.Code, diagnostic.Message); err != nil {
@@ -146,7 +194,7 @@ func readCatalog(path string) (rosetta.Catalog, error) {
 	if path == "" {
 		return rosetta.Catalog{}, errors.New("--catalog is required")
 	}
-	body, err := os.ReadFile(path)
+	body, err := readJSONFile(path)
 	if err != nil {
 		return rosetta.Catalog{}, fmt.Errorf("read catalog: %w", err)
 	}
@@ -166,7 +214,7 @@ func readOptions(path string) (rosetta.TargetOptions, error) {
 	if path == "" {
 		return rosetta.TargetOptions{}, nil
 	}
-	body, err := os.ReadFile(path)
+	body, err := readJSONFile(path)
 	if err != nil {
 		return rosetta.TargetOptions{}, fmt.Errorf("read options: %w", err)
 	}
@@ -180,4 +228,20 @@ func readOptions(path string) (rosetta.TargetOptions, error) {
 		return rosetta.TargetOptions{}, errors.New("options must contain exactly one JSON object")
 	}
 	return options, nil
+}
+
+func readJSONFile(path string) ([]byte, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+	body, err := io.ReadAll(io.LimitReader(file, maxCLIJSONBytes+1))
+	if err != nil {
+		return nil, err
+	}
+	if len(body) > maxCLIJSONBytes {
+		return nil, fmt.Errorf("JSON input exceeds %d bytes", maxCLIJSONBytes)
+	}
+	return bytes.Clone(body), nil
 }
