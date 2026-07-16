@@ -14,13 +14,13 @@ import (
 )
 
 func main() {
-	if err := run(os.Args[1:], os.Stdin, os.Stdout); err != nil {
+	if err := run(os.Args[1:], os.Stdin, os.Stdout, os.Stderr); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
 }
 
-func run(args []string, stdin io.Reader, stdout io.Writer) error {
+func run(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 	if len(args) == 0 {
 		return fmt.Errorf("usage: rosetta <compile|check|explain|targets|capabilities|version>")
 	}
@@ -50,6 +50,9 @@ func run(args []string, stdin io.Reader, stdout io.Writer) error {
 		if err != nil {
 			return err
 		}
+		if err := writeDiagnostics(stderr, output.Diagnostics); err != nil {
+			return err
+		}
 		_, err = io.WriteString(stdout, output.Output)
 		return err
 	case "check":
@@ -67,6 +70,9 @@ func run(args []string, stdin io.Reader, stdout io.Writer) error {
 			return err
 		}
 		if !result.Valid {
+			if err := writeDiagnostics(stderr, result.Diagnostics); err != nil {
+				return err
+			}
 			return errors.New(result.Errors[0])
 		}
 		_, err = fmt.Fprintln(stdout, "ok")
@@ -96,6 +102,9 @@ func run(args []string, stdin io.Reader, stdout io.Writer) error {
 		if err != nil {
 			return err
 		}
+		if err := writeDiagnostics(stderr, explanation.Diagnostics); err != nil {
+			return err
+		}
 		_, err = fmt.Fprintln(stdout, explanation.Explanation)
 		return err
 	case "targets":
@@ -122,6 +131,15 @@ func run(args []string, stdin io.Reader, stdout io.Writer) error {
 	default:
 		return fmt.Errorf("unknown command %q", args[0])
 	}
+}
+
+func writeDiagnostics(out io.Writer, diagnostics []rosetta.Diagnostic) error {
+	for _, diagnostic := range diagnostics {
+		if _, err := fmt.Fprintf(out, "%s[%s]: %s\n", diagnostic.Severity, diagnostic.Code, diagnostic.Message); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func readCatalog(path string) (rosetta.Catalog, error) {
