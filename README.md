@@ -29,6 +29,12 @@ rosetta compile --target claude-code --mode permissive --catalog examples/catalo
 
 Strict mode is the default and rejects allowed capabilities the target cannot represent without broadening access. `--mode permissive` may omit such a capability only when omission is a safe deny. The CLI writes every warning to stderr; SDK and HTTP callers receive the same diagnostics in the result.
 
+Use `--format json` with `compile`, `check`, or `explain` for automation. Compile and explain results include deterministic metadata identifying the compiler, catalog and target-contract versions, normalized mode, and SHA-256 digests of the compilation inputs and artifact:
+
+```sh
+rosetta compile --format json --target openshell --catalog examples/catalog.json < examples/developer.cedar
+```
+
 ## Go SDK
 
 The root module is the public SDK:
@@ -45,7 +51,7 @@ if err != nil {
 fmt.Print(result.Artifacts[0].Content)
 ```
 
-`Check` parses and schema-validates Cedar without a catalog. `Explain` compiles the same request and returns the capability decisions behind the artifact. `Targets` and `Capabilities` expose stable discovery metadata. Target rendering options are accepted through `--options`; the example uses them to define the transport for a Cedar-restricted Codex MCP server without embedding credentials.
+`Check` parses and schema-validates Cedar without a catalog. `Explain` compiles the same request and returns the capability decisions behind the artifact. `Targets` and `Capabilities` expose stable discovery metadata, including each target contract's version and maturity. Target rendering options are accepted through `--options`; the example uses them to define the transport for a Cedar-restricted Codex MCP server without embedding credentials.
 
 ## HTTP API
 
