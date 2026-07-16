@@ -6,13 +6,16 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
-	"path/filepath"
+	pathpkg "path"
 	"sort"
 	"strconv"
 	"strings"
 )
 
 func render(target, mode string, capabilities []Capability, decisions []Decision, options TargetOptions) (Artifact, []Diagnostic, error) {
+	if err := validateTargetOptions(target, options); err != nil {
+		return Artifact{}, nil, err
+	}
 	allowed := make(map[string]bool, len(decisions))
 	for _, decision := range decisions {
 		allowed[decision.CapabilityID] = decision.Allowed
@@ -25,26 +28,21 @@ func render(target, mode string, capabilities []Capability, decisions []Decision
 	}
 	sort.Slice(selected, func(i, j int) bool { return selected[i].ID < selected[j].ID })
 
-	supported := map[string]map[string]bool{
-		TargetOpenShell: {KindFilesystem: true, KindNetwork: true},
-		TargetOpenCode:  {KindFilesystem: true, KindTool: true, KindCommand: true, KindNetwork: true},
-		TargetCodex:     {KindFilesystem: true, KindTool: true},
-		TargetClaude:    {KindFilesystem: true, KindTool: true, KindCommand: true, KindNetwork: true},
-	}
 	var compatible []Capability
 	var diagnostics []Diagnostic
 	for _, capability := range selected {
-		if supported[target][capability.Kind] {
+		reason := representabilityError(target, capability, options)
+		if reason == "" {
 			compatible = append(compatible, capability)
 			continue
 		}
 		if mode == ModeStrict {
-			return Artifact{}, nil, fmt.Errorf("target %s cannot safely represent allowed %s capability %q", target, capability.Kind, capability.ID)
+			return Artifact{}, nil, fmt.Errorf("target %s cannot safely represent allowed %s capability %q: %s", target, capability.Kind, capability.ID, reason)
 		}
 		diagnostics = append(diagnostics, Diagnostic{
 			Severity:    "warning",
 			Code:        "capability_omitted",
-			Message:     fmt.Sprintf("omitted allowed capability %q because %s cannot represent %s without broadening access", capability.ID, target, capability.Kind),
+			Message:     fmt.Sprintf("omitted allowed capability %q because %s cannot represent it without broadening access: %s", capability.ID, target, reason),
 			Target:      target,
 			RuleID:      capability.ID,
 			Recoverable: true,
@@ -76,6 +74,12 @@ func renderOpenShell(capabilities []Capability, options OpenShellOptions) (Artif
 	if compatibility != "hard_requirement" && compatibility != "best_effort" {
 		return Artifact{}, fmt.Errorf("invalid OpenShell Landlock compatibility %q", compatibility)
 	}
+	if compatibility != "hard_requirement" {
+		return Artifact{}, errors.New("OpenShell Landlock compatibility must be hard_requirement to preserve fail-closed compilation")
+	}
+	if options.IncludeWorkdir {
+		return Artifact{}, errors.New("OpenShell includeWorkdir grants uncatalogued write access and is not supported")
+	}
 	user := options.RunAsUser
 	if user == "" {
 		user = "sandbox"
@@ -93,12 +97,12 @@ func renderOpenShell(capabilities []Capability, options OpenShellOptions) (Artif
 	for _, capability := range capabilities {
 		switch capability.Kind {
 		case KindFilesystem:
-			if !filepath.IsAbs(capability.Selector) {
+			if !isPOSIXAbsolute(capability.Selector) {
 				return Artifact{}, fmt.Errorf("OpenShell filesystem capability %q requires an absolute path", capability.ID)
 			}
-			clean := filepath.Clean(capability.Selector)
+			clean := pathpkg.Clean(capability.Selector)
 			if capability.Action == "write" {
-				if clean == string(filepath.Separator) {
+				if clean == "/" {
 					return Artifact{}, fmt.Errorf("OpenShell capability %q must not grant write access to the filesystem root", capability.ID)
 				}
 				readWrite = append(readWrite, clean)
@@ -110,7 +114,7 @@ func renderOpenShell(capabilities []Capability, options OpenShellOptions) (Artif
 				return Artifact{}, fmt.Errorf("OpenShell network capability %q requires at least one binary", capability.ID)
 			}
 			for _, binary := range capability.Binaries {
-				if !filepath.IsAbs(binary) {
+				if !isPOSIXAbsolute(binary) || pathpkg.Clean(binary) != binary {
 					return Artifact{}, fmt.Errorf("OpenShell network capability %q binary %q must be absolute", capability.ID, binary)
 				}
 			}
@@ -205,7 +209,7 @@ func renderOpenCode(capabilities []Capability) (Artifact, error) {
 			}
 			pattern := directoryPattern(capability.Selector)
 			addGranular(granular, key, pattern)
-			if filepath.IsAbs(capability.Selector) || strings.HasPrefix(capability.Selector, "~/") || strings.HasPrefix(capability.Selector, "$HOME/") {
+			if isPOSIXAbsolute(capability.Selector) || strings.HasPrefix(capability.Selector, "~/") || strings.HasPrefix(capability.Selector, "$HOME/") {
 				addGranular(granular, "external_directory", pattern)
 			}
 		case KindTool:
@@ -224,7 +228,11 @@ func renderOpenCode(capabilities []Capability) (Artifact, error) {
 			if capability.Port != 443 && capability.Port != 80 {
 				pattern += ":" + strconv.Itoa(capability.Port)
 			}
-			pattern += "/*"
+			if capability.Path == "" {
+				pattern += "/*"
+			} else {
+				pattern += capability.Path
+			}
 			addGranular(granular, "webfetch", pattern)
 		}
 	}
@@ -257,7 +265,7 @@ func renderCodex(capabilities []Capability, options CodexOptions) (Artifact, err
 			if capability.Action == "write" {
 				access = "write"
 			}
-			if filepath.IsAbs(capability.Selector) {
+			if isPOSIXAbsolute(capability.Selector) {
 				absoluteFilesystem[capability.Selector] = access
 			} else {
 				workspaceFilesystem[capability.Selector] = access
@@ -278,7 +286,7 @@ func renderCodex(capabilities []Capability, options CodexOptions) (Artifact, err
 	out.WriteString(strconv.Quote(profile))
 	out.WriteString("\n\n[permissions.")
 	out.WriteString(profile)
-	out.WriteString("]\nextends = \":read-only\"\n\n[permissions.")
+	out.WriteString("]\ndescription = \"Generated by Rosetta from Cedar-authorized capabilities.\"\n\n[permissions.")
 	out.WriteString(profile)
 	out.WriteString(".filesystem]\n\":minimal\" = \"read\"\n\":workspace_roots\" = { ")
 	keys := sortedKeys(workspaceFilesystem)
@@ -389,11 +397,6 @@ func renderClaude(capabilities []Capability) (Artifact, error) {
 			}
 		case KindTool:
 			allow = append(allow, capability.Selector)
-		case KindCommand:
-			allow = append(allow, "Bash("+capability.Selector+")")
-		case KindNetwork:
-			domains = append(domains, capability.Selector)
-			allow = append(allow, "WebFetch(domain:"+capability.Selector+")")
 		}
 	}
 	body := map[string]any{
@@ -410,7 +413,7 @@ func renderClaude(capabilities []Capability) (Artifact, error) {
 			"autoAllowBashIfSandboxed": false,
 			"allowUnsandboxedCommands": false,
 			"filesystem": map[string]any{
-				"denyRead":   []string{"~/"},
+				"denyRead":   []string{"/"},
 				"allowRead":  uniqueSorted(readPaths),
 				"allowWrite": uniqueSorted(writePaths),
 			},
@@ -436,11 +439,97 @@ func addGranular(all map[string]map[string]string, key, pattern string) {
 }
 
 func directoryPattern(root string) string {
-	root = strings.TrimSuffix(filepath.ToSlash(root), "/")
+	root = strings.TrimSuffix(root, "/")
 	if root == "" {
 		return "/**"
 	}
 	return root + "/**"
+}
+
+func representabilityError(target string, capability Capability, options TargetOptions) string {
+	switch target {
+	case TargetOpenShell:
+		switch capability.Kind {
+		case KindFilesystem:
+			if !isPOSIXAbsolute(capability.Selector) {
+				return "OpenShell filesystem paths must be absolute POSIX paths"
+			}
+			return ""
+		case KindNetwork:
+			if capability.Protocol == "mcp" || capability.Protocol == "json-rpc" {
+				return "the v0.5 catalog cannot express the required protocol rules"
+			}
+			return ""
+		default:
+			return "capability kind is not enforced by OpenShell policy"
+		}
+	case TargetOpenCode:
+		switch capability.Kind {
+		case KindFilesystem, KindCommand:
+			return ""
+		case KindTool:
+			if strings.ContainsAny(capability.Selector, "() ") {
+				return "OpenCode tool names must be exact permission keys"
+			}
+			return ""
+		case KindNetwork:
+			if capability.Protocol != "rest" {
+				return "OpenCode webfetch rules represent REST access only"
+			}
+			if capability.Port != 80 && capability.Port != 443 {
+				return "OpenCode webfetch rules cannot preserve a non-HTTP port"
+			}
+			if capability.Access != "read-only" {
+				return "OpenCode webfetch rules represent read-only access only"
+			}
+			if len(capability.Binaries) > 0 {
+				return "OpenCode cannot restrict webfetch access by executable"
+			}
+			return ""
+		}
+	case TargetCodex:
+		if capability.Kind == KindFilesystem {
+			return ""
+		}
+		if capability.Kind == KindTool {
+			if capability.Server == "" {
+				return "Codex tool capabilities require an MCP server"
+			}
+			if _, found := options.Codex.MCPServers[capability.Server]; !found {
+				return "Codex MCP tool capabilities require a transport definition"
+			}
+			return ""
+		}
+		return "capability kind is not enforced by Codex v0.5 output"
+	case TargetClaude:
+		if capability.Kind == KindFilesystem {
+			return ""
+		}
+		if capability.Kind == KindTool {
+			if strings.ContainsAny(capability.Selector, "() ") {
+				return "Claude Code tool capabilities must use an exact built-in or MCP tool name"
+			}
+			return ""
+		}
+		return "Claude Code project settings cannot preserve this capability without an explicit runtime baseline"
+	}
+	return "unsupported target"
+}
+
+func validateTargetOptions(target string, options TargetOptions) error {
+	hasOpenShell := options.OpenShell.IncludeWorkdir || options.OpenShell.LandlockCompatibility != "" || options.OpenShell.RunAsUser != "" || options.OpenShell.RunAsGroup != ""
+	hasCodex := options.Codex.ProfileName != "" || options.Codex.WorkspaceRoot != "" || len(options.Codex.MCPServers) > 0
+	if hasOpenShell && target != TargetOpenShell {
+		return errors.New("OpenShell options are only valid for the openshell target")
+	}
+	if hasCodex && target != TargetCodex {
+		return errors.New("Codex options are only valid for the codex target")
+	}
+	return nil
+}
+
+func isPOSIXAbsolute(value string) bool {
+	return strings.HasPrefix(value, "/") && !strings.Contains(value, "\\")
 }
 
 func textArtifact(target, name, pathHint, mediaType, content string) Artifact {
