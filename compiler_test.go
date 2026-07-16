@@ -2,6 +2,8 @@ package rosetta
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"strings"
 	"sync"
 	"testing"
@@ -241,6 +243,33 @@ func TestCompileRejectsAllowedCapabilityOverlappingDeny(t *testing.T) {
 			policy: `permit(principal, action, resource) unless { resource.selector == "git push" };`,
 			target: TargetOpenCode,
 		},
+		{
+			name: "intersecting command wildcards",
+			capabilities: []Capability{
+				{ID: "forced", Kind: KindCommand, Action: "execute", Selector: "git * --force"},
+				{ID: "push", Kind: KindCommand, Action: "execute", Selector: "git push *"},
+			},
+			policy: `permit(principal, action, resource) unless { resource.selector == "git push *" };`,
+			target: TargetOpenCode,
+		},
+		{
+			name: "intersecting question wildcard",
+			capabilities: []Capability{
+				{ID: "git", Kind: KindCommand, Action: "execute", Selector: "git pu?h"},
+				{ID: "push", Kind: KindCommand, Action: "execute", Selector: "git push"},
+			},
+			policy: `permit(principal, action, resource) unless { resource.selector == "git push" };`,
+			target: TargetOpenCode,
+		},
+		{
+			name: "intersecting network paths",
+			capabilities: []Capability{
+				{ID: "admin", Kind: KindNetwork, Action: "connect", Selector: "api.example.com", Port: 443, Path: "/v1/*/admin", Protocol: "rest", Access: "read-only", Binaries: []string{"/usr/bin/curl"}},
+				{ID: "users", Kind: KindNetwork, Action: "connect", Selector: "api.example.com", Port: 443, Path: "/v1/users/*", Protocol: "rest", Access: "read-only", Binaries: []string{"/usr/bin/curl"}},
+			},
+			policy: `permit(principal, action, resource) unless { resource has path && resource.path == "/v1/users/*" };`,
+			target: TargetOpenShell,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -252,6 +281,86 @@ func TestCompileRejectsAllowedCapabilityOverlappingDeny(t *testing.T) {
 				t.Fatalf("expected overlap rejection, got %v", err)
 			}
 		})
+	}
+}
+
+func TestCompileAllowsDisjointCommandPatterns(t *testing.T) {
+	result, err := Compile(context.Background(), CompileRequest{
+		Source: `permit(principal, action, resource) unless { resource.selector == "npm publish *" };`,
+		Target: TargetOpenCode,
+		Catalog: Catalog{
+			Version:   CatalogVersion,
+			Principal: EntityRef{ID: "agent"},
+			Capabilities: []Capability{
+				{ID: "git", Kind: KindCommand, Action: "execute", Selector: "git * --force"},
+				{ID: "publish", Kind: KindCommand, Action: "execute", Selector: "npm publish *"},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(result.Output, `"git * --force": "allow"`) || strings.Contains(result.Output, `"npm publish *": "allow"`) {
+		t.Fatalf("unexpected OpenCode output:\n%s", result.Output)
+	}
+}
+
+func TestGlobPatternsOverlap(t *testing.T) {
+	tests := []struct {
+		left  string
+		right string
+		want  bool
+	}{
+		{"git * --force", "git push *", true},
+		{"git pu?h", "git push", true},
+		{"git * --force", "npm publish *", false},
+		{"ab*cd", "ab*ef", false},
+		{"a*b*c", "ab*d*c", true},
+		{"*", "", true},
+		{"?", "", false},
+		{"å?", "åb", true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.left+"|"+tt.right, func(t *testing.T) {
+			budget := overlapBudget{remaining: MaxDecisionOverlapWork}
+			got, err := globPatternsOverlap(context.Background(), tt.left, tt.right, &budget)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got != tt.want {
+				t.Fatalf("globPatternsOverlap(%q, %q) = %v, want %v", tt.left, tt.right, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestDecisionIsolationHasDeterministicWorkLimit(t *testing.T) {
+	const perDecision = 501
+	capabilities := make([]Capability, 0, 2*perDecision)
+	decisions := make([]Decision, 0, 2*perDecision)
+	for i := range 2 * perDecision {
+		id := fmt.Sprintf("tool-%04d", i)
+		capabilities = append(capabilities, Capability{ID: id, Kind: KindTool, Action: "use", Selector: id})
+		decisions = append(decisions, Decision{CapabilityID: id, Allowed: i < perDecision})
+	}
+	err := validateDecisionIsolation(context.Background(), capabilities, decisions)
+	if err == nil || !strings.Contains(err.Error(), "work limit") {
+		t.Fatalf("expected deterministic work-limit error, got %v", err)
+	}
+}
+
+func TestDecisionIsolationHonorsContextCancellation(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	err := validateDecisionIsolation(ctx,
+		[]Capability{
+			{ID: "allowed", Kind: KindCommand, Action: "execute", Selector: "git *"},
+			{ID: "denied", Kind: KindCommand, Action: "execute", Selector: "git push"},
+		},
+		[]Decision{{CapabilityID: "allowed", Allowed: true}, {CapabilityID: "denied"}},
+	)
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("expected context cancellation, got %v", err)
 	}
 }
 
@@ -384,4 +493,49 @@ func FuzzCompileNeverBroadensDeniedInput(f *testing.F) {
 			t.Fatalf("denied selector was rendered as allowed: %q", selector)
 		}
 	})
+}
+
+func FuzzGlobIntersectionNeverMissesWitness(f *testing.F) {
+	f.Add("git * --force", "git push *", "git push --force")
+	f.Add("a?c", "ab*", "abc")
+	f.Add("npm *", "git *", "git status")
+	f.Fuzz(func(t *testing.T, left, right, witness string) {
+		if len(left) > 64 || len(right) > 64 || len(witness) > 64 || !testGlobMatch(left, witness) || !testGlobMatch(right, witness) {
+			return
+		}
+		budget := overlapBudget{remaining: MaxDecisionOverlapWork}
+		overlaps, err := globPatternsOverlap(context.Background(), left, right, &budget)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !overlaps {
+			t.Fatalf("missed witness %q shared by %q and %q", witness, left, right)
+		}
+	})
+}
+
+func testGlobMatch(pattern, value string) bool {
+	patternRunes := []rune(pattern)
+	valueRunes := []rune(value)
+	dp := make([][]bool, len(patternRunes)+1)
+	for i := range dp {
+		dp[i] = make([]bool, len(valueRunes)+1)
+	}
+	dp[0][0] = true
+	for i := 1; i <= len(patternRunes); i++ {
+		if patternRunes[i-1] == '*' {
+			dp[i][0] = dp[i-1][0]
+		}
+		for j := 1; j <= len(valueRunes); j++ {
+			switch patternRunes[i-1] {
+			case '*':
+				dp[i][j] = dp[i-1][j] || dp[i][j-1]
+			case '?':
+				dp[i][j] = dp[i-1][j-1]
+			default:
+				dp[i][j] = dp[i-1][j-1] && patternRunes[i-1] == valueRunes[j-1]
+			}
+		}
+	}
+	return dp[len(patternRunes)][len(valueRunes)]
 }
