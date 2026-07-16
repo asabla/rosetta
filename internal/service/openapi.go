@@ -76,8 +76,9 @@ func schemas() map[string]any {
 		"ExplainPolicyRequest":  objectSchema("Request to explain how Cedar policy source would be translated for a target.", []string{"source"}, propertyMap(policySourceProperty(), targetProperty(), targetOptionsProperty()), nil),
 		"ExplainPolicyResponse": objectSchema("Response containing a human-readable explanation of the translation process.", []string{"explanation"}, propertyMap(stringProperty("explanation", "Explanation of validation, normalization, and target rendering decisions."), diagnosticsProperty()), nil),
 		"TargetCapability":      objectSchema("Capability metadata for one Rosetta translation target.", []string{"target", "displayName", "description"}, propertyMap(targetProperty(), stringProperty("displayName", "Human-readable target name."), stringProperty("description", "Summary of the target integration and generated output."), arrayProperty("features", "Supported translation features for this target.", stringSchema("Feature name."))), nil),
-		"Diagnostic":            objectSchema("Validation or translation diagnostic emitted while processing policy source.", []string{"message", "severity"}, propertyMap(stringProperty("message", "Diagnostic text explaining the issue or warning."), stringProperty("severity", "Diagnostic severity such as error, warning, or info."), stringProperty("code", "Stable diagnostic code for programmatic handling.")), nil),
-		"Artifact":              objectSchema("Generated target artifact produced by a policy translation.", []string{"name", "content", "contentType"}, propertyMap(stringProperty("name", "Artifact file name or logical identifier."), stringProperty("content", "Artifact contents generated for the target."), stringProperty("contentType", "Media type for the artifact contents.")), nil),
+		"Diagnostic":            diagnosticSchema(),
+		"SourceSpan":            objectSchema("Source range associated with a diagnostic.", nil, propertyMap(intProperty("startLine", "One-based starting line for the source range."), intProperty("startColumn", "One-based starting column for the source range."), intProperty("endLine", "One-based ending line for the source range."), intProperty("endColumn", "One-based ending column for the source range.")), nil),
+		"Artifact":              artifactSchema(),
 		"PolicySource":          stringSchema("Raw Cedar policy source submitted to Rosetta."),
 		"TargetOptions":         objectSchema("Target-specific options for Rosetta policy translation.", nil, propertyMap(refProperty("openShell", "OpenShell translation options.", "OpenShellOptions"), refProperty("openCode", "OpenCode translation options.", "OpenCodeOptions"), refProperty("codex", "Codex translation options.", "CodexOptions"), refProperty("claudeCode", "Claude Code translation options.", "ClaudeCodeOptions")), nil),
 		"OpenShellOptions":      objectSchema("Options that control OpenShell policy artifact generation.", nil, propertyMap(stringProperty("profileName", "OpenShell profile name to embed in generated output.")), nil),
@@ -87,6 +88,42 @@ func schemas() map[string]any {
 		"OpenAPISchema":         map[string]any{"type": "object", "description": "OpenAPI document describing the Rosetta HTTP API."},
 		"HealthResponse":        objectSchema("Health check response for the Rosetta service.", []string{"status"}, propertyMap(stringProperty("status", "Service status value.")), nil),
 	}
+}
+
+func diagnosticSchema() map[string]any {
+	return objectSchema(
+		"Validation or translation diagnostic emitted while processing policy source. The code field is stable enough for automation, while message remains human-readable.",
+		[]string{"severity", "code", "message"},
+		propertyMap(
+			stringProperty("severity", "Diagnostic severity such as error, warning, or info."),
+			stringProperty("code", "Stable diagnostic code for programmatic handling."),
+			stringProperty("message", "Human-readable diagnostic text explaining the issue or warning."),
+			objectProperty("details", "Additional structured diagnostic metadata."),
+			refProperty("sourceSpan", "Source range associated with this diagnostic.", "SourceSpan"),
+			stringProperty("target", "Target identifier related to this diagnostic, when applicable."),
+			stringProperty("ruleId", "Rule identifier related to this diagnostic, when applicable."),
+			boolProperty("recoverable", "Whether processing can recover from this diagnostic."),
+			stringProperty("documentationUrl", "Documentation URL for remediation guidance."),
+		),
+		nil,
+	)
+}
+
+func artifactSchema() map[string]any {
+	return objectSchema(
+		"Generated target artifact produced by a policy translation. Content is plain text by default when encoding is plain; use base64 or another explicit encoding for encoded content.",
+		[]string{"name", "mediaType", "content", "encoding"},
+		propertyMap(
+			stringProperty("name", "Artifact file name or logical identifier."),
+			stringProperty("pathHint", "Suggested relative output path for writing this artifact."),
+			stringProperty("mediaType", "Media type for the artifact contents."),
+			stringProperty("target", "Target identifier this artifact was generated for."),
+			stringProperty("content", "Artifact contents generated for the target."),
+			stringProperty("encoding", "Encoding for content, such as plain or base64."),
+			stringProperty("description", "Human-readable summary of the generated artifact."),
+		),
+		nil,
+	)
 }
 
 func objectSchema(description string, required []string, properties map[string]any, examples []any) map[string]any {
@@ -155,6 +192,12 @@ func stringProperty(name, description string) map[string]any {
 }
 func boolProperty(name, description string) map[string]any {
 	return map[string]any{name: map[string]any{"type": "boolean", "description": description}}
+}
+func intProperty(name, description string) map[string]any {
+	return map[string]any{name: map[string]any{"type": "integer", "description": description}}
+}
+func objectProperty(name, description string) map[string]any {
+	return map[string]any{name: map[string]any{"type": "object", "description": description, "additionalProperties": true}}
 }
 func stringSchema(description string) map[string]any {
 	return map[string]any{"type": "string", "description": description}
