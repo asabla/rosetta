@@ -26,6 +26,8 @@ Use prose by default in documentation, comments, commit messages, and pull reque
 
 Write pull request descriptions as direct, concise prose for human reviewers. Center the explanation on why the change is needed. Do not restate the diff or enumerate ordinary implementation details; mention unusual choices, pivotal decisions, or reviewer caveats only when they are not self-evident. Avoid template headings such as `Summary`, `Rationale`, or `Validation` when they merely label obvious paragraphs. Do not include iteration scores or ad hoc validation narratives. Let configured CI and repository checks communicate verification; when those checks do not exist, do not portray manual claims as repository validation.
 
+Follow [Conventional Commits 1.0.0](https://www.conventionalcommits.org/en/v1.0.0/) for commit headers: `<type>[optional scope][!]: <description>`. Use `feat` for new behavior and `fix` for defects; use `docs`, `test`, `refactor`, `perf`, `build`, `ci`, or `chore` when they more accurately describe the change. Choose an optional, stable scope such as `api`, `cli`, `compiler`, or `service`, and omit it for genuinely cross-cutting changes. Write the description in concise, lower-case imperative language without a trailing period. Mark breaking changes with `!` and explain them in a `BREAKING CHANGE:` footer. Examples include `feat(api): validate compilation modes`, `fix(compiler): preserve forbid semantics`, and `docs(agents): clarify review guidance`.
+
 Do not provide time estimates. Describe scope, dependencies, risks, and verification evidence instead. Prefer long-term stability and maintainability when choosing between a temporary shortcut and a durable solution.
 
 ## Verification
