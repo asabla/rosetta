@@ -51,4 +51,4 @@ fmt.Print(result.Artifacts[0].Content)
 
 Run `rosetta-server` or the container and send the same SDK request model to `POST /v1/compile`. The service also exposes `POST /v1/check`, `POST /v1/explain`, discovery endpoints, a health endpoint, and `/v1/openapi.json`. Request bodies are limited to 2 MiB and unknown JSON fields are rejected.
 
-The [architecture](docs/architecture.md), [Cedar profile](docs/cedar-profile.md), [target support](docs/targets.md), and [security model](docs/security.md) document the compatibility and trust boundaries.
+The [architecture](docs/architecture.md), [Cedar profile](docs/cedar-profile.md), [target support](docs/targets.md), executable [target contracts](docs/target-contracts.md), and [security model](docs/security.md) document the compatibility and trust boundaries.
