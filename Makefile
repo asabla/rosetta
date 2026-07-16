@@ -12,6 +12,7 @@ fuzz:
 	go test . -run='^$$' -fuzz=FuzzGlobIntersectionNeverMissesWitness -fuzztime=30s
 
 check:
+	sh scripts/check-toolchain.sh
 	test -z "$$(gofmt -l .)"
 	go test ./...
 	go test -race ./...
