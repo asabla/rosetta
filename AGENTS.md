@@ -24,6 +24,8 @@ Prefer focused changes that solve the underlying problem and leave clear extensi
 
 Use prose by default in documentation, comments, commit messages, and pull request descriptions. Use a list when it communicates a genuine sequence or set more clearly than prose; do not turn every explanation into bullets. Comments should explain invariants, tradeoffs, or non-obvious reasoning rather than restate code.
 
+Write pull request descriptions as direct, concise prose for human reviewers. Center the explanation on why the change is needed. Do not restate the diff or enumerate ordinary implementation details; mention unusual choices, pivotal decisions, or reviewer caveats only when they are not self-evident. Avoid template headings such as `Summary`, `Rationale`, or `Validation` when they merely label obvious paragraphs. Do not include iteration scores or ad hoc validation narratives. Let configured CI and repository checks communicate verification; when those checks do not exist, do not portray manual claims as repository validation.
+
 Do not provide time estimates. Describe scope, dependencies, risks, and verification evidence instead. Prefer long-term stability and maintainability when choosing between a temporary shortcut and a durable solution.
 
 ## Verification
