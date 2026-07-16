@@ -5,7 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
-	"path/filepath"
+	pathpkg "path"
 	"slices"
 	"sort"
 	"strings"
@@ -88,6 +88,9 @@ func Compile(ctx context.Context, req CompileRequest) (*CompileResult, error) {
 	if err != nil {
 		return nil, err
 	}
+	if err := validateDecisionIsolation(selected, decisions); err != nil {
+		return nil, err
+	}
 
 	artifact, renderDiagnostics, err := render(req.Target, mode, selected, decisions, req.Options)
 	if err != nil {
@@ -101,6 +104,83 @@ func Compile(ctx context.Context, req CompileRequest) (*CompileResult, error) {
 		Decisions:   decisions,
 		Diagnostics: diagnostics,
 	}, nil
+}
+
+func validateDecisionIsolation(capabilities []Capability, decisions []Decision) error {
+	allowed := make(map[string]bool, len(decisions))
+	for _, decision := range decisions {
+		allowed[decision.CapabilityID] = decision.Allowed
+	}
+	for i, left := range capabilities {
+		for _, right := range capabilities[i+1:] {
+			if allowed[left.ID] == allowed[right.ID] || !capabilitiesOverlap(left, right) {
+				continue
+			}
+			permitted, denied := left, right
+			if !allowed[left.ID] {
+				permitted, denied = right, left
+			}
+			return fmt.Errorf("allowed capability %q overlaps denied capability %q; target output cannot preserve the deny", permitted.ID, denied.ID)
+		}
+	}
+	return nil
+}
+
+func capabilitiesOverlap(left, right Capability) bool {
+	if left.Kind != right.Kind {
+		return false
+	}
+	switch left.Kind {
+	case KindFilesystem:
+		return pathContains(left.Selector, right.Selector) || pathContains(right.Selector, left.Selector)
+	case KindTool:
+		return left.Selector == right.Selector
+	case KindCommand:
+		return wildcardMatch(left.Selector, right.Selector) || wildcardMatch(right.Selector, left.Selector)
+	case KindNetwork:
+		if left.Port != right.Port {
+			return false
+		}
+		hostsOverlap := wildcardMatch(left.Selector, right.Selector) || wildcardMatch(right.Selector, left.Selector)
+		pathsOverlap := left.Path == "" || right.Path == "" || wildcardMatch(left.Path, right.Path) || wildcardMatch(right.Path, left.Path)
+		return hostsOverlap && pathsOverlap
+	default:
+		return false
+	}
+}
+
+func pathContains(parent, child string) bool {
+	parent = strings.TrimSuffix(pathpkg.Clean(parent), "/")
+	child = strings.TrimSuffix(pathpkg.Clean(child), "/")
+	return parent == child || parent == "" || parent == "/" || strings.HasPrefix(child, parent+"/")
+}
+
+func wildcardMatch(pattern, value string) bool {
+	rows := len(pattern) + 1
+	cols := len(value) + 1
+	dp := make([][]bool, rows)
+	for i := range dp {
+		dp[i] = make([]bool, cols)
+	}
+	dp[0][0] = true
+	for i := 1; i < rows; i++ {
+		if pattern[i-1] == '*' {
+			dp[i][0] = dp[i-1][0]
+		}
+	}
+	for i := 1; i < rows; i++ {
+		for j := 1; j < cols; j++ {
+			switch pattern[i-1] {
+			case '*':
+				dp[i][j] = dp[i-1][j] || dp[i][j-1]
+			case '?':
+				dp[i][j] = dp[i-1][j-1]
+			default:
+				dp[i][j] = dp[i-1][j-1] && pattern[i-1] == value[j-1]
+			}
+		}
+	}
+	return dp[len(pattern)][len(value)]
 }
 
 func Explain(ctx context.Context, req ExplainRequest) (*ExplainResult, error) {
@@ -146,7 +226,6 @@ func parseAndValidate(source, mode string) (*cedar.PolicySet, []Diagnostic, erro
 	options := []validate.Option{validate.WithStrict()}
 	var diagnostics []Diagnostic
 	if mode == ModePermissive {
-		options = []validate.Option{validate.WithPermissive()}
 		diagnostics = append(diagnostics, permissiveDiagnostic())
 	}
 	validator := validate.New(resolved, options...)
@@ -324,14 +403,14 @@ func validateCapability(capability Capability) error {
 		return errors.New("tool selector must name one exact tool")
 	}
 	if capability.Kind == KindFilesystem {
-		if strings.ContainsAny(capability.Selector, "*?[") {
+		if strings.ContainsAny(capability.Selector, "*?[\\") {
 			return errors.New("filesystem selector must name a directory root without glob syntax")
 		}
-		clean := filepath.Clean(capability.Selector)
+		clean := pathpkg.Clean(capability.Selector)
 		if clean == "." && capability.Selector != "." {
 			return errors.New("filesystem selector is empty after normalization")
 		}
-		for _, part := range strings.Split(filepath.ToSlash(capability.Selector), "/") {
+		for _, part := range strings.Split(capability.Selector, "/") {
 			if part == ".." {
 				return errors.New("filesystem selector must not contain traversal")
 			}
@@ -343,6 +422,14 @@ func validateCapability(capability Capability) error {
 		}
 		if capability.Port < 1 || capability.Port > 65535 {
 			return errors.New("network port must be between 1 and 65535")
+		}
+		if capability.Path != "" {
+			if err := validatePlainString("network path", capability.Path, MaxSelectorBytes); err != nil {
+				return err
+			}
+			if !strings.HasPrefix(capability.Path, "/") || strings.ContainsAny(capability.Path, "?#") {
+				return errors.New("network path must be an absolute path pattern without query or fragment")
+			}
 		}
 	}
 	return nil
