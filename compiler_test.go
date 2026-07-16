@@ -90,6 +90,54 @@ func TestCompileTargetsAreDeterministicAndRestrictive(t *testing.T) {
 	}
 }
 
+func TestCompileMetadataIsDeterministicAndContentAddressed(t *testing.T) {
+	req := CompileRequest{Source: testPolicy, Target: TargetOpenCode, Catalog: testCatalog()}
+	first, err := Compile(context.Background(), req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := Compile(context.Background(), req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first.Metadata != second.Metadata {
+		t.Fatalf("metadata is not deterministic: %#v != %#v", first.Metadata, second.Metadata)
+	}
+	if first.Metadata.CompilerVersion != Version || first.Metadata.CatalogVersion != CatalogVersion {
+		t.Fatalf("unexpected compiler metadata: %#v", first.Metadata)
+	}
+	if first.Metadata.TargetContractVersion == "" || len(first.Metadata.InputSHA256) != 64 || len(first.Metadata.ArtifactSHA256) != 64 {
+		t.Fatalf("incomplete compiler metadata: %#v", first.Metadata)
+	}
+	changed := req
+	changed.Source += "\n"
+	third, err := Compile(context.Background(), changed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if third.Metadata.InputSHA256 == first.Metadata.InputSHA256 {
+		t.Fatal("input digest did not change with source bytes")
+	}
+	if third.Metadata.ArtifactSHA256 != first.Metadata.ArtifactSHA256 {
+		t.Fatal("semantically equivalent source changed the deterministic artifact")
+	}
+}
+
+func TestCapabilitiesDiscoverVersionedTargetContracts(t *testing.T) {
+	result, err := Capabilities(context.Background(), CapabilitiesRequest{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.TargetContracts) != len(Targets()) {
+		t.Fatalf("got %d target contracts for %d targets", len(result.TargetContracts), len(Targets()))
+	}
+	for _, contract := range result.TargetContracts {
+		if contract.Target == "" || contract.Version == "" || (contract.Maturity != "supported" && contract.Maturity != "preview") {
+			t.Fatalf("invalid target contract: %#v", contract)
+		}
+	}
+}
+
 func TestOpenShellRejectsUncataloguedAndFailOpenOptions(t *testing.T) {
 	catalog := Catalog{
 		Version:      CatalogVersion,
