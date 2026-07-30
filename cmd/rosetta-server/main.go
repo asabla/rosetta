@@ -19,7 +19,7 @@ import (
 )
 
 const (
-	defaultAddress         = "127.0.0.1:8080"
+	defaultAddress         = ":8080"
 	insecureHTTPVariable   = "ROSETTA_INSECURE_HTTP"
 	tlsCertificateVariable = "ROSETTA_TLS_CERT_FILE"
 	tlsKeyVariable         = "ROSETTA_TLS_KEY_FILE"
