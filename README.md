@@ -57,6 +57,6 @@ fmt.Print(result.Artifacts[0].Content)
 
 Run `rosetta-server` or the container and send the same SDK request model to `POST /v1/compile`. The service also exposes `POST /v1/check`, `POST /v1/explain`, discovery endpoints, a health endpoint, and `/v1/openapi.json`. Request bodies are limited to 2 MiB and unknown JSON fields are rejected.
 
-`rosetta-server` refuses to start without an authenticated transport. Set `ROSETTA_TLS_CERT_FILE`, `ROSETTA_TLS_KEY_FILE`, and `ROSETTA_CLIENT_CA_FILE` to enable TLS 1.3 with mandatory client-certificate verification. Plain HTTP requires `ROSETTA_INSECURE_HTTP=true` and is restricted to a numeric loopback address for local development and process-level tests.
+`rosetta-server` refuses to start without an authenticated transport. Set `ROSETTA_TLS_CERT_FILE`, `ROSETTA_TLS_KEY_FILE`, and `ROSETTA_CLIENT_CA_FILE` to enable TLS 1.3 with mandatory client-certificate verification. Plain HTTP requires `ROSETTA_INSECURE_HTTP=true` together with a numeric-loopback `ROSETTA_ADDR`; it is available only for local development and process-level tests.
 
 The [architecture](docs/architecture.md), [Cedar profile](docs/cedar-profile.md), [target support](docs/targets.md), executable [target contracts](docs/target-contracts.md), [security model](docs/security.md), and [v1 migration guide](docs/migrating-to-v1.md) document the compatibility and trust boundaries.
