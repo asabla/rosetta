@@ -57,7 +57,7 @@ func TestLoadServerConfigAllowsOnlyExplicitLoopbackHTTP(t *testing.T) {
 func TestMutualTLSRequiresTrustedClientCertificate(t *testing.T) {
 	files, roots, clientCertificate := transportCertificates(t)
 	config, err := loadServerConfig(environment(map[string]string{
-		"ROSETTA_ADDR":          "127.0.0.1:0",
+		"ROSETTA_ADDR":         "127.0.0.1:0",
 		tlsCertificateVariable: files.serverCertificate,
 		tlsKeyVariable:         files.serverKey,
 		clientCAVariable:       files.caCertificate,
