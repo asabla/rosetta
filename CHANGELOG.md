@@ -4,6 +4,8 @@ Rosetta follows [Semantic Versioning](https://semver.org/).
 
 ## Unreleased
 
+The service now requires TLS 1.3 with verified workload client certificates for network-facing operation. Plain HTTP is an explicit loopback-only development mode.
+
 ## 1.0.0 - 2026-07-16
 
 Rosetta now validates complete target capability semantics before rendering. OpenShell fail-closed settings are fixed rather than exposed as options, Codex options cannot activate workspace roots, Claude Code command and network mappings fail closed until an explicit runtime baseline is available, and permissive CLI compilation reports every diagnostic on stderr.
