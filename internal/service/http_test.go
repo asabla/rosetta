@@ -87,6 +87,9 @@ func TestOpenAPISchemaUsesOperationIDsAndDescribedSchemas(t *testing.T) {
 		`"targetContractVersion"`,
 		`"inputSha256"`,
 		`"artifactSha256"`,
+		`"securitySchemes"`,
+		`"mutualTLS"`,
+		`"type": "mutualTLS"`,
 		`"const": "rosetta/v1"`,
 		`"version": "1.0.0"`,
 	} {
