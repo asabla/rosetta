@@ -56,6 +56,12 @@ func TestLoadServerConfigAllowsOnlyExplicitLoopbackHTTP(t *testing.T) {
 
 func TestMutualTLSRequiresTrustedClientCertificate(t *testing.T) {
 	files, roots, clientCertificate := transportCertificates(t)
+	untrustedCA, untrustedCAKey, _ := certificateAuthority(t)
+	untrustedCertificatePEM, untrustedKeyPEM := signedCertificate(t, untrustedCA, untrustedCAKey, true)
+	untrustedCertificate, err := tls.X509KeyPair(untrustedCertificatePEM, untrustedKeyPEM)
+	if err != nil {
+		t.Fatal(err)
+	}
 	config, err := loadServerConfig(environment(map[string]string{
 		"ROSETTA_ADDR":         "127.0.0.1:0",
 		tlsCertificateVariable: files.serverCertificate,
@@ -83,20 +89,30 @@ func TestMutualTLSRequiresTrustedClientCertificate(t *testing.T) {
 	}()
 
 	baseTLS := &tls.Config{MinVersion: tls.VersionTLS13, RootCAs: roots}
-	unauthenticated := &http.Client{
-		Timeout:   2 * time.Second,
-		Transport: &http.Transport{TLSClientConfig: baseTLS.Clone()},
-	}
-	if response, err := unauthenticated.Get("https://" + listener.Addr().String() + "/healthz"); err == nil {
-		_ = response.Body.Close()
-		t.Fatal("expected a client without a certificate to be rejected")
+	for name, certificates := range map[string][]tls.Certificate{
+		"missing":   nil,
+		"untrusted": {untrustedCertificate},
+	} {
+		t.Run(name, func(t *testing.T) {
+			clientTLS := baseTLS.Clone()
+			clientTLS.Certificates = certificates
+			transport := &http.Transport{TLSClientConfig: clientTLS}
+			t.Cleanup(transport.CloseIdleConnections)
+			client := &http.Client{Timeout: 2 * time.Second, Transport: transport}
+			if response, err := client.Get("https://" + listener.Addr().String() + "/healthz"); err == nil {
+				_ = response.Body.Close()
+				t.Fatal("expected unauthenticated client to be rejected")
+			}
+		})
 	}
 
 	authenticatedTLS := baseTLS.Clone()
 	authenticatedTLS.Certificates = []tls.Certificate{clientCertificate}
+	authenticatedTransport := &http.Transport{TLSClientConfig: authenticatedTLS}
+	t.Cleanup(authenticatedTransport.CloseIdleConnections)
 	authenticated := &http.Client{
 		Timeout:   2 * time.Second,
-		Transport: &http.Transport{TLSClientConfig: authenticatedTLS},
+		Transport: authenticatedTransport,
 	}
 	response, err := authenticated.Get("https://" + listener.Addr().String() + "/healthz")
 	if err != nil {
@@ -171,12 +187,14 @@ func signedCertificate(
 	}
 	usage := x509.ExtKeyUsageServerAuth
 	commonName := "rosetta-server"
+	serialNumber := int64(2)
 	if client {
 		usage = x509.ExtKeyUsageClientAuth
 		commonName = "dataground"
+		serialNumber = 3
 	}
 	template := &x509.Certificate{
-		SerialNumber: big.NewInt(2),
+		SerialNumber: big.NewInt(serialNumber),
 		Subject:      pkix.Name{CommonName: commonName},
 		NotBefore:    time.Now().Add(-time.Hour),
 		NotAfter:     time.Now().Add(time.Hour),
