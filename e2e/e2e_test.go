@@ -55,7 +55,7 @@ func TestCLIAndServiceCompileEquivalentArtifacts(t *testing.T) {
 
 	address := freeAddress(t)
 	process := exec.Command(server)
-	process.Env = append(os.Environ(), "ROSETTA_ADDR="+address)
+	process.Env = append(os.Environ(), "ROSETTA_ADDR="+address, "ROSETTA_INSECURE_HTTP=true")
 	var serverLog bytes.Buffer
 	process.Stdout = &serverLog
 	process.Stderr = &serverLog
