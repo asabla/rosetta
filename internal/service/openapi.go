@@ -24,7 +24,16 @@ func OpenAPISchema() []byte {
 			"/v1/openapi.json": map[string]any{"get": readOperation("getOpenAPISchema", "Fetch this OpenAPI document", "OpenAPISchema")},
 			"/healthz":         map[string]any{"get": readOperation("getHealth", "Check service health", "HealthResponse")},
 		},
-		"components": map[string]any{"schemas": schemas()},
+		"components": map[string]any{
+			"schemas": schemas(),
+			"securitySchemes": map[string]any{
+				"mutualTLS": map[string]any{
+					"type":        "mutualTLS",
+					"description": "TLS 1.3 client certificate issued by the deployment client CA.",
+				},
+			},
+		},
+		"security": []any{map[string]any{"mutualTLS": []string{}}},
 	}
 	body, _ := json.MarshalIndent(document, "", "  ")
 	return body
